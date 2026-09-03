@@ -6,28 +6,39 @@ Yeni başlayanlar için tek komutla ortam kurulumu.
 
 ### Sıfır bir makinede (Node/Git/GitHub CLI dahil hiçbir şey kurulu değilken)
 `node bin/setup.js`'in kendisi Node gerektirdiği için, Node hiç kurulu değilse
-bu komutu çalıştıramazsın — klasik bir tavuk-yumurta sorunu. Bunun için saf
-shell (bash) ile yazılmış, hiçbir ön koşul gerektirmeyen bir bootstrap script'i var
-(Homebrew/nvm/rustup'ın kullandığı desenin aynısı):
+bu komutu çalıştıramazsın — klasik bir tavuk-yumurta sorunu. Bunun için hiçbir
+ön koşul gerektirmeyen birer bootstrap script'i var (Homebrew/nvm/rustup'ın
+kullandığı desenin aynısı), her platform için ayrı:
+
+**macOS** (`bootstrap.sh`, bash):
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fatihtzn/dev-setup-cli/main/bootstrap.sh | bash
 ```
-Bu tek komut sırasıyla: Homebrew'i (yoksa) kurar → git/node/gh'yi (yoksa) kurar →
-GitHub'a giriş yaptırır (Okta SSO, tarayıcıda) → aracın kendisini clone'lar →
-`node bin/setup.js`'e devreder. **macOS için test edildi**; Windows'ta bu script
-çalışmaz, ekip bir PowerShell eşdeğeri hazırlayana kadar Windows kullanıcıları
-git/node/gh'yi elle kurup aşağıdaki akışa geçmeli.
 
-> ⚠️ **Repo private olduğu sürece yukarıdaki `curl` tek satırı çalışmaz** —
+**Windows** (`bootstrap.ps1`, PowerShell — winget kullanır):
+```powershell
+irm https://raw.githubusercontent.com/fatihtzn/dev-setup-cli/main/bootstrap.ps1 | iex
+```
+
+İkisi de sırasıyla: paket yöneticisini (Homebrew / winget) doğrular → git/node/gh'yi
+(yoksa) kurar → GitHub'a giriş yaptırır (Okta SSO, tarayıcıda) → aracın kendisini
+clone'lar → `node bin/setup.js`'e devreder.
+
+**Doğrulama durumu:** `bootstrap.sh` bu oturumda macOS'ta gerçek çalıştırmalarla
+test edildi (araç kurulum mekanizması dahil). `bootstrap.ps1` bu makine macOS
+olduğu için gerçek bir Windows makinesinde **henüz hiç test edilmedi** — mantıksal
+olarak yazıldı, ilk kullanımda dikkatli ol ve sorun bulursan bildir.
+
+> ⚠️ **Repo private olduğu sürece yukarıdaki tek satırlar çalışmaz** —
 > `raw.githubusercontent.com` private reponun içeriğini anonim isteklere
 > döndürmüyor (404). `git clone` adımı sorun değil (script önce `gh auth login`
-> yaptırıp SSH ile private repo'ya erişiyor) — sorun sadece bootstrap.sh'in
-> kendisini sıfır makineye ilk ulaştırma adımı. Repo private kaldığı sürece
-> bootstrap.sh'i elle kopyala (`scp bootstrap.sh kullanici@vm:~/` gibi) ya da
-> içeriğini VM'de bir düzenleyiciyle yapıştır, sonra `bash bootstrap.sh` çalıştır.
-> Araç resmi Airalo iş akışına geçtiğinde ya bootstrap.sh ayrı, herkese görünür
-> (public) bir gist/repo'da tutulabilir (asıl kod yine private kalır), ya da
-> şirket içi bir dağıtım kanalından (VM imajı, MDM script'i vb.) verilebilir.
+> yaptırıp SSH ile private repo'ya erişiyor) — sorun sadece bootstrap script'ini
+> sıfır makineye ilk ulaştırma adımı. Repo private kaldığı sürece script'i elle
+> kopyala (`scp bootstrap.sh kullanici@makine:~/` gibi) ya da içeriğini hedef
+> makinede bir düzenleyiciyle yapıştır, sonra çalıştır. Araç resmi Airalo iş
+> akışına geçtiğinde ya bootstrap script'leri ayrı, herkese görünür (public) bir
+> gist/repo'da tutulabilir (asıl kod yine private kalır), ya da şirket içi bir
+> dağıtım kanalından (VM imajı, MDM script'i vb.) verilebilir.
 
 ### Zaten git/node/gh kuruluysa
 ```bash
