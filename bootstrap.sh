@@ -8,18 +8,19 @@
 # giriş yaptırmak, asıl aracı clone'lamak ve ona devretmek.
 #
 # Kullanım (yeni bir makinede, terminali açıp tek satır):
-#   curl -fsSL https://raw.githubusercontent.com/Airalo/dev-setup-cli/main/bootstrap.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/fatihtzn/dev-setup-cli/main/bootstrap.sh | bash
 #
 # ya da bu dosya elle indirilip/kopyalanıp çalıştırılabilir:
 #   bash bootstrap.sh
 #
-# NOT: <REPO_URL> şu an placeholder — bu araç gerçek Airalo GitHub org'una
-# taşındığında burası ve yukarıdaki curl URL'i güncellenmeli.
+# NOT: Şu an fatihtzn'in KİŞİSEL (private) reposuna işaret ediyor —
+# bu araç gerçek Airalo GitHub org'una taşındığında burası ve yukarıdaki
+# curl URL'i güncellenmeli.
 
 set -euo pipefail
 
 # ---- Ayarlanabilir tek değer: aracın gerçek reposu ----------------------
-REPO_URL="git@github.com:Airalo/dev-setup-cli.git"
+REPO_URL="git@github.com:fatihtzn/dev-setup-cli.git"
 CLONE_DIR="${HOME}/dev-setup-cli"
 # --------------------------------------------------------------------------
 
