@@ -1,0 +1,37 @@
+{
+  "_readme": "Repo listesi artik GitHub'dan otomatik cekiliyor. Bu dosyaya SADECE bir projenin generic (otomatik-tespit) davranisindan farkli, ozel bir ayara ihtiyaci varsa kayit ekle. Key = GitHub repo adinin BIREBIR ayni olmali. secretManager: '1password' verilirse .env.example icindeki op://vault/item/field referanslari 'op inject' ile gercek degerlerle doldurulur (1Password CLI kurulu ve giris yapilmis olmali); yoksa .env.example duz kopyalanir. healthCheckPort verilirse docker compose up sonrasi o port dinlemeye baslayana kadar beklenir; verilmezse docker-compose.yml'deki ilk yayinlanmis port otomatik tespit edilir. Docker gerektirmeyen projelerde runCommand verilirse (orn. 'npm run start:dev') kurulum sonrasi o komut arka planda calistirilir; verilmezse sirasiyla package.json'daki dev/start/serve script'i, sonra Laravel projelerinde (artisan dosyasi varsa) 'php artisan serve', o da yoksa README.md'deki guvenli (npm/yarn/pnpm ile baslayan) komut kullanilir. runPort verilirse portu log'dan tahmin etmek yerine dogrudan o port health-check edilir. postCloneCommands otomatik tespitinde composer.json varsa 'composer install' de eklenir (npm/yarn/pnpm ile ayni repoda birlikte bulunabilirler).",
+  "Frontend": {
+    "web-app": {
+      "displayName": "Web App (Ana Frontend Projesi)",
+      "postCloneCommands": [
+        "npm install"
+      ],
+      "readyMessage": "Web app hazir! http://localhost:3000 adresinden kontrol edebilirsin."
+    },
+    "airalo-partner-panel-frontend": {
+      "displayName": "Airalo Partner Panel (Frontend)",
+      "readyMessage": "Partner Panel hazir! http://localhost:5173 adresinden kontrol edebilirsin."
+    }
+  },
+  "Backend": {
+    "test-task": {
+      "displayName": "Test Task (Laravel + Vite demo)",
+      "readyMessage": "Docker ile ayaga kalkti! http://localhost:8080 adresinden kontrol edebilirsin."
+    },
+    "airalo-partner-backend": {
+      "displayName": "Airalo Partner Backend",
+      "requiresDocker": true,
+      "postCloneCommands": [
+        "node -e \"const fs=require('fs');let c=fs.readFileSync('.env','utf8');c=c.replace(/^VIEW_COMPILED_PATH=.*$/m,'VIEW_COMPILED_PATH=/var/www/html/storage/framework/views').replace(/^AWS_SQS_VERSION=.*$/m,'AWS_SQS_VERSION=latest').replace(/^ATTR_EMULATE_PREPARES=.*$/m,'ATTR_EMULATE_PREPARES=true').replace(/^TRANSLATION_DRIVER=.*$/m,'TRANSLATION_DRIVER=database').replace(/^BCRYPT_ROUNDS=.*$/m,'BCRYPT_ROUNDS=10').replace(/^JWT_ALGO=.*$/m,'JWT_ALGO=HS256').replace(/^INTERNAL_HEALTH_CHECK_RATE_LIMIT=.*$/m,'INTERNAL_HEALTH_CHECK_RATE_LIMIT=60').replace(/^INTERNAL_HEALTH_CHECK_TIMEOUT=.*$/m,'INTERNAL_HEALTH_CHECK_TIMEOUT=3000').replace(/^RATE_LIMITER_CACHE_DRIVER=.*$/m,'RATE_LIMITER_CACHE_DRIVER=file');fs.writeFileSync('.env',c);\"",
+        "export COMPOSER_AUTH=\"{\\\"github-oauth\\\":{\\\"github.com\\\":\\\"$(gh auth token)\\\"}}\" && docker compose build --no-cache && docker compose run --rm -e COMPOSER_AUTH php composer install",
+        "docker compose run --rm php php artisan key:generate --force && docker compose run --rm php php artisan jwt:secret --force",
+        "docker compose up -d partners_mysql && until docker compose exec -T partners_mysql mysqladmin ping -h localhost -u root --silent 2>/dev/null; do sleep 2; done && docker compose run --rm php ./artisan migrate:fresh --force",
+        "docker compose run --rm php php artisan passport:install --force",
+        "docker compose run --rm php php artisan db:seed --force"
+      ],
+      "readyMessage": "Docker build + composer install (private airalo/* dahil) + key:generate + jwt:secret + DB migrate + passport:install + db:seed tamamlandi. Uygulama artik gercekten calisiyor (713 route kayitli, DB/cache/rate-limit calisiyor) -- ornek: curl -H 'Host: partners.airalo.local' http://localhost:8081/internal/v1/health . Bazi .env.example alanlari bos oldugu icin (VIEW_COMPILED_PATH, AWS_SQS_VERSION, ATTR_EMULATE_PREPARES, TRANSLATION_DRIVER, BCRYPT_ROUNDS, JWT_ALGO, INTERNAL_HEALTH_CHECK_RATE_LIMIT/TIMEOUT, RATE_LIMITER_CACHE_DRIVER -- bu son ikisi redis servisi compose'da olmadigi icin 'file'a cekildi) local'de otomatik dolduruldu; bu gercek bir Airalo backend .env.example eksigi, ekibe bildirilmesi faydali olur. /internal/v1/health endpoint'i AIRALO_URL (gercek bir Airalo API adresi) gerektiriyor, bu deger bilinmedigi/uydurulamayacagi icin bos birakildi -- doldurursan health-check tam calisir."
+    }
+  },
+  "Mobile": {},
+  "DevOps": {}
+}
