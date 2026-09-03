@@ -1,0 +1,13 @@
+node_modules/
+.DS_Store
+Archive.zip
+*.zip
+
+# Bu araç repo'ları test/kurulum için klonlar — kendi kaynak kodumuzla asla
+# karışmamalı.
+airalo-partner-backend/
+web-app/
+*.dev-setup-run.log
+.env
+.env.local
+.env.*.local
