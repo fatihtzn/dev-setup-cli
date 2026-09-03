@@ -10,7 +10,7 @@ bu komutu çalıştıramazsın — klasik bir tavuk-yumurta sorunu. Bunun için 
 shell (bash) ile yazılmış, hiçbir ön koşul gerektirmeyen bir bootstrap script'i var
 (Homebrew/nvm/rustup'ın kullandığı desenin aynısı):
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Airalo/dev-setup-cli/main/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/fatihtzn/dev-setup-cli/main/bootstrap.sh | bash
 ```
 Bu tek komut sırasıyla: Homebrew'i (yoksa) kurar → git/node/gh'yi (yoksa) kurar →
 GitHub'a giriş yaptırır (Okta SSO, tarayıcıda) → aracın kendisini clone'lar →
@@ -18,10 +18,16 @@ GitHub'a giriş yaptırır (Okta SSO, tarayıcıda) → aracın kendisini clone'
 çalışmaz, ekip bir PowerShell eşdeğeri hazırlayana kadar Windows kullanıcıları
 git/node/gh'yi elle kurup aşağıdaki akışa geçmeli.
 
-> ⚠️ `bootstrap.sh` içindeki `REPO_URL` şu an placeholder
-> (`git@github.com:Airalo/dev-setup-cli.git`) — bu araç gerçek bir Airalo
-> GitHub reposuna taşındığında hem bu değer hem yukarıdaki `curl` URL'i
-> güncellenmeli.
+> ⚠️ **Repo private olduğu sürece yukarıdaki `curl` tek satırı çalışmaz** —
+> `raw.githubusercontent.com` private reponun içeriğini anonim isteklere
+> döndürmüyor (404). `git clone` adımı sorun değil (script önce `gh auth login`
+> yaptırıp SSH ile private repo'ya erişiyor) — sorun sadece bootstrap.sh'in
+> kendisini sıfır makineye ilk ulaştırma adımı. Repo private kaldığı sürece
+> bootstrap.sh'i elle kopyala (`scp bootstrap.sh kullanici@vm:~/` gibi) ya da
+> içeriğini VM'de bir düzenleyiciyle yapıştır, sonra `bash bootstrap.sh` çalıştır.
+> Araç resmi Airalo iş akışına geçtiğinde ya bootstrap.sh ayrı, herkese görünür
+> (public) bir gist/repo'da tutulabilir (asıl kod yine private kalır), ya da
+> şirket içi bir dağıtım kanalından (VM imajı, MDM script'i vb.) verilebilir.
 
 ### Zaten git/node/gh kuruluysa
 ```bash
