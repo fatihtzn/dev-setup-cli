@@ -12,11 +12,6 @@
 # ya da bu dosya elle indirilip/kopyalanip calistirilabilir:
 #   .\bootstrap.ps1
 #
-# NOT: Repo su an PRIVATE oldugu icin yukaridaki tek-satir "irm | iex" deseni
-# CALISMAZ (raw.githubusercontent.com anonim istege private icerik dondurmez)
-# -- bootstrap.ps1'i once elle (scp/RDP dosya paylasimi/USB) makineye tasi,
-# sonra "powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1" ile calistir.
-#
 # NOT: Bu script gercek bir Windows makinesinde henuz test edilmedi
 # (bootstrap.sh macOS'ta gercek calistirmalarla dogrulandi, bu Windows
 # esdegeri sadece mantiksal olarak yazildi) -- ilk calistirmada dikkatli ol.
