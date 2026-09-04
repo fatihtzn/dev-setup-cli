@@ -132,6 +132,13 @@ function detectComposeHostPort(projectDir, composeFile) {
 // projenin pinlenmiş sürümünü doğru şekilde indirip kullanır.
 function ensureCorepackAvailable(commands) {
   if (!commandExists('corepack')) {
+    // corepack paketi kendi "yarn"/"pnpm" bin'lerini de kurmaya çalışır;
+    // makinede (ör. bu aracın önceki, düzeltilmemiş bir sürümünden veya
+    // başka bir yerden) npm ile kurulmuş çıplak bir global yarn/pnpm varsa,
+    // npm o dosyaların üzerine yazmayı reddedip "EEXIST: file already
+    // exists" ile patlar (gerçek VM testinde gözlemlendi). Önce onları
+    // temizliyoruz; yoklarsa uninstall zaten sessizce no-op olur.
+    commands.push('npm uninstall -g yarn pnpm >/dev/null 2>&1 || true');
     commands.push('npm install -g corepack');
   }
 }
