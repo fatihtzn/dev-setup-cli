@@ -111,7 +111,40 @@ else
   info "GitHub girişi gerekiyor. Tarayıcı açılacak, Okta SSO ile giriş yap (MFA dahil)."
   # https protokolü: makinede SSH key kurulu/kayıtlı olması şartı yok,
   # gh kendi token'ıyla kimlik doğruluyor (git clone/push dahil).
-  gh auth login --web --git-protocol https
+  #
+  # gh'nin kendi "Enter'a bas -> tarayıcıyı aç" mekanizması bazı sanal
+  # makinelerde (ör. ekran paylaşımlı VM) Enter'a basılsa bile tarayıcıyı
+  # sessizce açmayabiliyor (gerçek testte gözlemlendi). Bu yüzden gh'nin
+  # çıktısını arka planda izleyip login URL'ini biz de `open` ile
+  # açıyoruz — gh'nin normal akışını bozmamak için `script` ile gerçek bir
+  # pty'ye bağlıyoruz (aksi halde stdout pipe'a döner, gh interaktif
+  # modu/renk çıktısını kapatabilir).
+  if command_exists script; then
+    GH_LOGIN_LOG="$(mktemp)"
+    (
+      for _ in $(seq 1 300); do
+        if [ -s "$GH_LOGIN_LOG" ]; then
+          url="$(grep -oE 'https://github\.com/login/device[^[:space:]]*' "$GH_LOGIN_LOG" 2>/dev/null | head -1 || true)"
+          if [ -n "$url" ]; then
+            open "$url" >/dev/null 2>&1 || true
+            break
+          fi
+        fi
+        sleep 0.2
+      done
+    ) &
+    WATCHER_PID=$!
+
+    script -q "$GH_LOGIN_LOG" gh auth login --web --git-protocol https
+
+    kill "$WATCHER_PID" >/dev/null 2>&1 || true
+    wait "$WATCHER_PID" 2>/dev/null || true
+    rm -f "$GH_LOGIN_LOG"
+  else
+    gh auth login --web --git-protocol https
+  fi
+
+  gh auth status >/dev/null 2>&1 || fail "GitHub girişi tamamlanamadı. Tekrar dene: gh auth login --web --git-protocol https"
 fi
 
 # Daha önce ssh protokolüyle giriş yapılmış olabilir (eski bootstrap
