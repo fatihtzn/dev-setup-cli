@@ -1,5 +1,13 @@
 const prompts = require('prompts');
-const { commandExists, getPlatform, checkWsl2Status, isDockerDaemonRunning, run } = require('../platform');
+const {
+  commandExists,
+  getPlatform,
+  checkWsl2Status,
+  isDockerDaemonRunning,
+  isDockerComposeAvailable,
+  fixDockerComposePlugin,
+  run,
+} = require('../platform');
 const { isDryRun } = require('../dryRunState');
 
 // installHint aynı zamanda GERÇEK, çalıştırılabilir kurulum komutu — otomatik
@@ -64,6 +72,9 @@ async function attemptAutoFix(tool, platform) {
   if (tool.kind === 'start-daemon') {
     return startDockerDaemonAndWait(platform);
   }
+  if (tool.kind === 'fix-compose-plugin') {
+    return fixDockerComposePlugin();
+  }
 
   const cmd = tool.installHint[platform] || tool.installHint.macos;
   console.log(`\n📦 Installing ${tool.cmd}: ${cmd}`);
@@ -98,6 +109,24 @@ async function checkPrerequisites(config) {
       installHint: {
         macos: 'Open the Docker Desktop app (Applications > Docker) and wait until the whale icon shows "running"',
         windows: 'Start Docker Desktop and wait until the whale icon in the system tray shows "running"',
+      },
+    });
+  }
+
+  // "docker" CLI kurulu ve daemon çalışıyor olsa bile "docker compose" ayrı
+  // bir CLI plugin olarak çözülür ve sadece belirli dizinlerde aranır.
+  // Homebrew'ın macOS docker-desktop cask'ı gerçek plugin'e işaret eden
+  // symlink'i Docker CLI'ın hiç bakmadığı bir dizine (/usr/local/cli-plugins/)
+  // koyabiliyor — "docker: unknown command: docker compose" hatasıyla
+  // gerçek bir macOS VM'de gözlemlendi (daemon çalışıyorken bile). Bu kontrol
+  // daemon'dan bağımsız (compose version daemon gerektirmez).
+  if (config.requiresDocker && !dockerBinaryMissing && !isDockerComposeAvailable()) {
+    missing.push({
+      cmd: 'docker compose (plugin)',
+      kind: 'fix-compose-plugin',
+      installHint: {
+        macos: 'Docker CLI cannot find the compose plugin — create a symlink in ~/.docker/cli-plugins/ pointing at the real plugin bundled inside Docker.app',
+        windows: 'Docker CLI cannot find the compose plugin — try repairing/reinstalling Docker Desktop',
       },
     });
   }
