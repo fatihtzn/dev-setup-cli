@@ -20,7 +20,7 @@
 set -euo pipefail
 
 # ---- Ayarlanabilir tek değer: aracın gerçek reposu ----------------------
-REPO_URL="git@github.com:fatihtzn/dev-setup-cli.git"
+GH_REPO="fatihtzn/dev-setup-cli"
 CLONE_DIR="${HOME}/dev-setup-cli"
 # --------------------------------------------------------------------------
 
@@ -51,14 +51,30 @@ echo
 if ! command_exists brew; then
   info "Homebrew bulunamadı, kuruluyor (resmi kurulum betiği ile)..."
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  # Apple Silicon'da brew /opt/homebrew altına kurulur ve PATH'e otomatik
-  # girmeyebilir; bu oturum için elle ekliyoruz.
-  if [ -x /opt/homebrew/bin/brew ]; then
-    eval "$(/opt/homebrew/bin/brew shellenv)"
-  fi
   ok "Homebrew kuruldu."
 else
   ok "Homebrew zaten kurulu."
+fi
+
+# brew /opt/homebrew (Apple Silicon) ya da /usr/local (Intel) altına kurulur
+# ve PATH'e otomatik girmeyebilir. Hem bu oturum hem de ileride açılacak
+# terminaller için PATH'i kalıcı şekilde ayarlıyoruz (~/.zprofile) —
+# aksi halde script kapandıktan sonra "gh: command not found" gibi hatalar
+# alınır çünkü eval sadece o anki process'i etkiler, kalıcı olmaz.
+BREW_BIN=""
+if [ -x /opt/homebrew/bin/brew ]; then
+  BREW_BIN="/opt/homebrew/bin/brew"
+elif [ -x /usr/local/bin/brew ]; then
+  BREW_BIN="/usr/local/bin/brew"
+fi
+if [ -n "$BREW_BIN" ]; then
+  eval "$("$BREW_BIN" shellenv)"
+  SHELLENV_LINE="eval \"\$($BREW_BIN shellenv)\""
+  touch "${HOME}/.zprofile"
+  if ! grep -qF "$SHELLENV_LINE" "${HOME}/.zprofile" 2>/dev/null; then
+    printf '\n%s\n' "$SHELLENV_LINE" >> "${HOME}/.zprofile"
+    info "PATH kalıcı olarak ~/.zprofile içine eklendi (yeni terminallerde de gh/git/node bulunacak)."
+  fi
 fi
 
 # ---- 2) git / node / gh ----------------------------------------------------
@@ -78,16 +94,30 @@ if gh auth status >/dev/null 2>&1; then
   ok "GitHub CLI zaten giriş yapılmış."
 else
   info "GitHub girişi gerekiyor. Tarayıcı açılacak, Okta SSO ile giriş yap (MFA dahil)."
-  gh auth login --web --git-protocol ssh
+  # https protokolü: makinede SSH key kurulu/kayıtlı olması şartı yok,
+  # gh kendi token'ıyla kimlik doğruluyor (git clone/push dahil).
+  gh auth login --web --git-protocol https
 fi
 
+# Daha önce ssh protokolüyle giriş yapılmış olabilir (eski bootstrap
+# çalıştırmaları) — SSH key şartını tamamen kaldırmak için burada da
+# https'e zorluyoruz, giriş adımını atlasak bile. gh, host bazlı protokolü
+# ~/.config/gh/hosts.yml içinde AYRICA tutar ve genel config'i (config.yml)
+# ezer — ikisini de set etmezsek "gh repo clone" sessizce ssh'e döner.
+gh config set git_protocol https
+gh config set -h github.com git_protocol https
+gh auth setup-git >/dev/null 2>&1 || true
+
 # ---- 4) dev-setup-cli'ı clone'la (zaten varsa günceller) -------------------
+# SSH anahtarı gerektirmemesi için git+ssh yerine gh'nin kendi (token
+# tabanlı, HTTPS) kimlik doğrulamasıyla clone ediyoruz — makinede GitHub'a
+# kayıtlı bir SSH key olması şart değil.
 if [ -d "$CLONE_DIR/.git" ]; then
   info "dev-setup-cli zaten $CLONE_DIR altında, güncelleniyor..."
   git -C "$CLONE_DIR" pull --ff-only
 else
   info "dev-setup-cli clone'lanıyor -> $CLONE_DIR"
-  git clone "$REPO_URL" "$CLONE_DIR"
+  gh repo clone "$GH_REPO" "$CLONE_DIR"
 fi
 
 # ---- 5) npm bağımlılıkları + asıl aracı çalıştır ---------------------------
