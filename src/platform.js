@@ -1,4 +1,6 @@
 const os = require('os');
+const fs = require('fs');
+const path = require('path');
 const { execSync } = require('child_process');
 
 function getPlatform() {
@@ -35,6 +37,56 @@ function isDockerDaemonRunning() {
   }
 }
 
+// `docker` CLI kurulu olsa bile "docker compose" alt komutu ayrı bir CLI
+// plugin'i olarak çözülür; Docker CLI bunu sadece belirli dizinlerde arar
+// (~/.docker/cli-plugins/, /usr/local/lib/docker/cli-plugins/ vb.). Homebrew'ın
+// docker-desktop cask'ı gerçek plugin binary'sine (Docker.app içinde) işaret
+// eden bir symlink'i KENDİ /usr/local/cli-plugins/ dizinine koyuyor — bu,
+// Docker CLI'ın arama yollarından biri DEĞİL, bu yüzden plugin hiç
+// bulunamıyor ve "docker: unknown command: docker compose" hatası veriyor
+// (gerçek bir macOS VM'de gözlemlendi: dosya doğruydu, sadece yanlış
+// klasördeydi). isDockerComposeAvailable bunu tespit eder, fixDockerComposePlugin
+// gerçek plugin'i bulup doğru dizine kendi symlink'imizi oluşturarak düzeltir.
+function isDockerComposeAvailable() {
+  try {
+    execSync('docker compose version', { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function fixDockerComposePlugin() {
+  if (getPlatform() !== 'macos') return false;
+
+  const candidates = [
+    '/Applications/Docker.app/Contents/Resources/cli-plugins/docker-compose',
+    '/usr/local/cli-plugins/docker-compose',
+    '/opt/homebrew/cli-plugins/docker-compose',
+  ];
+  const source = candidates.find((p) => fs.existsSync(p));
+  if (!source) return false;
+
+  const targetDir = path.join(os.homedir(), '.docker', 'cli-plugins');
+  const target = path.join(targetDir, 'docker-compose');
+
+  try {
+    fs.mkdirSync(targetDir, { recursive: true });
+    try {
+      // lstatSync (existsSync değil): hedef zaten var ama bozuk bir symlink'se
+      // existsSync false döner, unlink yine de gerekir.
+      fs.lstatSync(target);
+      fs.unlinkSync(target);
+    } catch {
+      // target hiç yoktu, sorun değil
+    }
+    fs.symlinkSync(fs.realpathSync(source), target);
+    return isDockerComposeAvailable();
+  } catch {
+    return false;
+  }
+}
+
 // Windows'ta Docker Desktop'ın WSL2 backend'i için en az bir WSL2 dağıtımı
 // gerekir. Sadece bilgi amaçlı, salt-okunur bir kontrol (hiçbir şeyi kurmaz/değiştirmez).
 // `wsl -l -v` çıktısı bazı Windows sürümlerinde UTF-16LE olarak basıldığından
@@ -60,4 +112,12 @@ function checkWsl2Status() {
   }
 }
 
-module.exports = { getPlatform, commandExists, run, checkWsl2Status, isDockerDaemonRunning };
+module.exports = {
+  getPlatform,
+  commandExists,
+  run,
+  checkWsl2Status,
+  isDockerDaemonRunning,
+  isDockerComposeAvailable,
+  fixDockerComposePlugin,
+};
