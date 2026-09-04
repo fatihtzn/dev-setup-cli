@@ -27,6 +27,17 @@
 # ediyoruz.
 $ErrorActionPreference = "Continue"
 
+# npm Windows'ta hem npm.cmd hem npm.ps1 olarak gelir; PowerShell'de bare
+# "npm" komutu genellikle npm.ps1'i calistirmaya calisir. Varsayilan Windows
+# PowerShell execution policy'si (Restricted) imzasiz .ps1 dosyalarini
+# engelledigi icin bu, "npm.ps1 cannot be loaded because running scripts is
+# disabled on this system" hatasiyla scripti durduruyordu (gercek bir
+# Windows makinesinde gozlemlendi). "Process" scope sadece bu script'in
+# calistigi anlik PowerShell process'ini etkiler -- kalici bir sistem/
+# kullanici ayarini DEGISTIRMEZ, process kapaninca kendiliginden sona erer,
+# ve admin yetkisi gerektirmez.
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+
 # ---- Ayarlanabilir tek deger: aracin gercek reposu ------------------------
 $GhRepo   = "fatihtzn/dev-setup-cli"
 $CloneDir = Join-Path $HOME "dev-setup-cli"
