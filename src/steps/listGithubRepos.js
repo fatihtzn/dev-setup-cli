@@ -10,7 +10,7 @@ function listRepos(owner) {
     [
       'repo', 'list', owner,
       '--limit', '200',
-      '--json', 'name,sshUrl,description,isArchived',
+      '--json', 'name,nameWithOwner,description,isArchived',
     ],
     { encoding: 'utf-8' }
   );

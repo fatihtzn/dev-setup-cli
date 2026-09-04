@@ -8,12 +8,12 @@ const { isDryRun } = require('./dryRunState');
 const MOCK_REPOS = [
   {
     name: 'web-app',
-    sshUrl: 'git@github.com:ornek-org/web-app.git',
+    nameWithOwner: 'ornek-org/web-app',
     description: '(örnek) config/projects.json içindeki override ile eşleşir',
   },
   {
     name: 'ornek-servis',
-    sshUrl: 'git@github.com:ornek-org/ornek-servis.git',
+    nameWithOwner: 'ornek-org/ornek-servis',
     description: '(örnek) override yok, generic akış çalışır',
   },
 ];
@@ -81,7 +81,7 @@ async function selectProject() {
 
   const config = {
     displayName: repoName,
-    repo: repo.sshUrl,
+    repo: repo.nameWithOwner,
     envExampleFile: '.env.example',
     ...override, // override varsa generic ayarların üzerine yazar
   };
