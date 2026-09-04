@@ -121,15 +121,18 @@ function detectComposeHostPort(projectDir, composeFile) {
 // Bir repo yarn.lock/pnpm-lock.yaml ile gelebilir ama o paket yöneticisi
 // makinede hiç kurulu olmayabilir (ör. bootstrap.sh sadece git/node/gh
 // kurar) — gerçek bir VM testinde "yarn: command not found" ile
-// gözlemlendi. Node'la birlikte gelen corepack ekstra global kurulum
-// gerektirmeden yarn/pnpm'i talep anında indirip aktive eder; corepack da
-// yoksa (çok eski Node) npm ile global kuruluma düşülür.
-function ensurePackageManagerAvailable(pm, commands) {
-  if (commandExists(pm)) return;
-  if (commandExists('corepack')) {
-    commands.push('corepack enable');
-  } else {
-    commands.push(`npm install -g ${pm}`);
+// gözlemlendi. Node'un içinde gelmesi beklenen corepack, bazı dağıtımlarda
+// (ör. Homebrew'ın node formülü) hiç bulunmuyor; "npm install -g yarn" gibi
+// bir fallback ise projenin package.json'ında pinlenmiş sürümü (ör.
+// "packageManager": "yarn@4.13.0") yok sayan klasik/genel bir yarn kurar ve
+// "Corepack must be enabled" hatasıyla patlar (gerçek VM testinde
+// gözlemlendi). Bu yüzden PATH'teki "yarn"/"pnpm" komutuna hiç güvenmiyoruz —
+// corepack yoksa npm ile kuruyoruz, kurulum komutunu da her zaman
+// "corepack <pm> install" olarak çalıştırıyoruz; bu, PATH'te ne olursa olsun
+// projenin pinlenmiş sürümünü doğru şekilde indirip kullanır.
+function ensureCorepackAvailable(commands) {
+  if (!commandExists('corepack')) {
+    commands.push('npm install -g corepack');
   }
 }
 
@@ -176,11 +179,11 @@ function autoDetect(config, projectDir) {
     }
 
     if (fs.existsSync(path.join(projectDir, 'pnpm-lock.yaml'))) {
-      ensurePackageManagerAvailable('pnpm', commands);
-      commands.push('pnpm install');
+      ensureCorepackAvailable(commands);
+      commands.push('corepack pnpm install');
     } else if (fs.existsSync(path.join(projectDir, 'yarn.lock'))) {
-      ensurePackageManagerAvailable('yarn', commands);
-      commands.push('yarn install');
+      ensureCorepackAvailable(commands);
+      commands.push('corepack yarn install');
     } else if (fs.existsSync(path.join(projectDir, 'package.json'))) {
       commands.push('npm install');
     }

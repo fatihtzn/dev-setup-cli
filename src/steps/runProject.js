@@ -47,8 +47,13 @@ function detectNpmRunScript(projectDir) {
 
   const scripts = pkg.scripts || {};
   const pm = detectPackageManager(projectDir);
+  // yarn/pnpm'i PATH'ten çıplak çağırmak yerine corepack üzerinden
+  // çalıştırıyoruz — bkz. setupProject.js'deki ensureCorepackAvailable
+  // yorumu: PATH'te globalce kurulu, projenin pinlenmiş sürümüyle
+  // (package.json "packageManager" alanı) uyuşmayan bir yarn/pnpm olabilir.
+  const runner = pm === 'npm' ? pm : `corepack ${pm}`;
   for (const candidate of ['dev', 'start', 'serve']) {
-    if (scripts[candidate]) return `${pm} run ${candidate}`;
+    if (scripts[candidate]) return `${runner} run ${candidate}`;
   }
   return null;
 }
