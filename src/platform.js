@@ -105,15 +105,24 @@ function getNvmCommandPrefix(projectDir) {
   // gözlemlendi — .nvmrc pinlenmiş sürüm hiç devreye girmedi çünkü nvm hiç
   // kurulu değildi). nvm kurulu değilse, komutun kendisi (çalıştığı
   // makinede) resmi kurulum script'iyle önce nvm'i kurar.
+  //
+  // İlk denemede kurulum çıktısı "> /dev/null 2>&1" ile bastırılmıştı;
+  // gerçek bir VM'de curl sessizce başarısız olduğunda (ör. geçici ağ
+  // sorunu) hiçbir iz bırakmadan nvm.sh hâlâ yok oluyordu, "&&" kısa devre
+  // yapıp nvm install hiç çalışmıyordu ve script mevcut (yanlış) Node ile
+  // sessizce devam edip aynı native-build hatasını tekrarlıyordu. Artık:
+  // (1) kurulum çıktısı gizlenmiyor (gerçek hata görünür olur), (2) sadece
+  // dosyanın var olduğuna GÜVENMİYORUZ — kurulum denemesinden SONRA
+  // çalışma anında tekrar kontrol edip yoksa açık bir uyarı basıyoruz.
   const installNvmCmd = fs.existsSync(nvmScript)
     ? ''
-    : `curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_INSTALL_VERSION}/install.sh" | bash >/dev/null 2>&1; `;
+    : `curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_INSTALL_VERSION}/install.sh" | bash; `;
 
-  // nvm install çıktısı bilerek gizlenmiyor (ilk kurulumda indirme
-  // ilerlemesi gösterir); ";" ile devam ediyoruz ki nvm install her
-  // nedenle başarısız olursa bile asıl komut (elimizdeki Node ile) yine de
-  // denensin — sessizce tıkanmak yerine.
-  return `${installNvmCmd}. "${nvmScript}" >/dev/null 2>&1 && nvm install; `;
+  return (
+    `${installNvmCmd}` +
+    `if [ -f "${nvmScript}" ]; then . "${nvmScript}" && nvm install; ` +
+    `else echo "⚠️  nvm not found/installed, cannot switch to the pinned Node version (${version}) — continuing with the current Node, native dependencies may fail to build/run." >&2; fi; `
+  );
 }
 
 // `docker` komutunun PATH'te olması, Docker Desktop'ın gerçekten AÇIK olduğu
