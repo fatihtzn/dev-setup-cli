@@ -55,6 +55,55 @@ function run(cmd, options = {}) {
   return execSync(cmd, { stdio: 'inherit', ...options });
 }
 
+// Bir repo, o an aktif olan global Node sürümünden FARKLI bir sürüm
+// isteyebilir (.nvmrc ya da package.json'daki "engines.node"). Bu fark
+// gözden kaçarsa, native (derlenen, ör. isolated-vm gibi) bağımlılıklar
+// YANLIŞ Node sürümünün header'larına karşı derlenip kurulum/çalıştırma
+// anında "exit code 1" gibi anlaşılmaz hatalarla patlayabiliyor — gerçek
+// bir projede (ux-frontend-v1.5, .nvmrc "v22.20" istiyordu ama aktif Node
+// v26.8.1'di) gözlemlendi. detectRequiredNodeVersion bunu tespit eder,
+// getNvmCommandPrefix ise nvm kuruluysa doğru sürümü (yoksa nvm ile
+// indirip) devreye alan bir bash komut öneki üretir — bu önek, kurulum ve
+// çalıştırma komutlarının ÖNÜNE eklenerek aynı shell içinde geçerli olur.
+function detectRequiredNodeVersion(projectDir) {
+  const nvmrcPath = path.join(projectDir, '.nvmrc');
+  if (fs.existsSync(nvmrcPath)) {
+    const version = fs.readFileSync(nvmrcPath, 'utf-8').trim();
+    if (version) return version;
+  }
+
+  const pkgPath = path.join(projectDir, 'package.json');
+  if (fs.existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+      if (pkg.engines && pkg.engines.node) return pkg.engines.node;
+    } catch {
+      // package.json okunamadı/parse edilemedi, sessizce vazgeç
+    }
+  }
+
+  return null;
+}
+
+// nvm-windows tamamen farklı bir araç (.nvmrc'yi aynı şekilde okumaz), bu
+// yüzden şimdilik sadece macOS/Linux'ta (POSIX nvm.sh) destekleniyor.
+function getNvmCommandPrefix(projectDir) {
+  if (getPlatform() === 'windows') return '';
+
+  const version = detectRequiredNodeVersion(projectDir);
+  if (!version) return '';
+
+  const nvmDir = process.env.NVM_DIR || path.join(os.homedir(), '.nvm');
+  const nvmScript = path.join(nvmDir, 'nvm.sh');
+  if (!fs.existsSync(nvmScript)) return '';
+
+  // nvm install çıktısı bilerek gizlenmiyor (ilk kurulumda indirme
+  // ilerlemesi gösterir); ";" ile devam ediyoruz ki nvm install her
+  // nedenle başarısız olursa bile asıl komut (elimizdeki Node ile) yine de
+  // denensin — sessizce tıkanmak yerine.
+  return `. "${nvmScript}" >/dev/null 2>&1 && nvm install; `;
+}
+
 // `docker` komutunun PATH'te olması, Docker Desktop'ın gerçekten AÇIK olduğu
 // anlamına gelmez (CLI kurulu olsa bile daemon kapalıysa her docker komutu
 // başarısız olur). "docker info" daemon'a gerçekten bağlanmayı dener.
@@ -150,4 +199,6 @@ module.exports = {
   isDockerDaemonRunning,
   isDockerComposeAvailable,
   fixDockerComposePlugin,
+  detectRequiredNodeVersion,
+  getNvmCommandPrefix,
 };

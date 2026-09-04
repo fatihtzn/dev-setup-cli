@@ -6,6 +6,7 @@ Archive.zip
 # Bu araç repo'ları test/kurulum için klonlar — kendi kaynak kodumuzla asla
 # karışmamalı.
 airalo-partner-backend/
+airalo-partner-panel-frontend/
 web-app/
 *.dev-setup-run.log
 .env

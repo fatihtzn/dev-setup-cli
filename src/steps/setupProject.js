@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const yaml = require('js-yaml');
-const { run, commandExists } = require('../platform');
+const { run, commandExists, getNvmCommandPrefix } = require('../platform');
 const { isDryRun } = require('../dryRunState');
 const { injectWith1Password } = require('./secrets');
 const { waitForPort } = require('./healthCheck');
@@ -194,15 +194,21 @@ function autoDetect(config, projectDir) {
     // yapılmış olduğundan token'ı oradan sağlıyoruz; repo bu değişkeni hiç
     // kullanmıyorsa zararsız, kullanıyorsa otomatik doğru çalışır.
     const NODE_AUTH_TOKEN_PREFIX = 'NODE_AUTH_TOKEN="$(gh auth token 2>/dev/null)" ';
+    // Repo, o an aktif olan global Node sürümünden farklı bir sürüm
+    // isteyebilir (.nvmrc / engines.node) — bkz. getNvmCommandPrefix yorumu.
+    // Yanlış sürümle kurulan native (derlenen) bağımlılıklar sessizce
+    // bozuk kurulur, bu yüzden install komutundan ÖNCE (NODE_AUTH_TOKEN'dan
+    // da önce) doğru sürüme geçiyoruz.
+    const nvmPrefix = getNvmCommandPrefix(projectDir);
 
     if (fs.existsSync(path.join(projectDir, 'pnpm-lock.yaml'))) {
       ensureCorepackAvailable(commands);
-      commands.push(`${NODE_AUTH_TOKEN_PREFIX}corepack pnpm install`);
+      commands.push(`${nvmPrefix}${NODE_AUTH_TOKEN_PREFIX}corepack pnpm install`);
     } else if (fs.existsSync(path.join(projectDir, 'yarn.lock'))) {
       ensureCorepackAvailable(commands);
-      commands.push(`${NODE_AUTH_TOKEN_PREFIX}corepack yarn install`);
+      commands.push(`${nvmPrefix}${NODE_AUTH_TOKEN_PREFIX}corepack yarn install`);
     } else if (fs.existsSync(path.join(projectDir, 'package.json'))) {
-      commands.push(`${NODE_AUTH_TOKEN_PREFIX}npm install`);
+      commands.push(`${nvmPrefix}${NODE_AUTH_TOKEN_PREFIX}npm install`);
     }
 
     detected.postCloneCommands = commands;

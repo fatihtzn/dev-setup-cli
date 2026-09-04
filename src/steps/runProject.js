@@ -3,6 +3,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { isDryRun } = require('../dryRunState');
 const { waitForPort } = require('./healthCheck');
+const { getNvmCommandPrefix } = require('../platform');
 
 // Dev server loglarında portu yakalamak için denenen kalıplar (Vite, Next.js,
 // CRA, Vue CLI, Express/Nest gibi araçların tipik çıktılarını kapsar).
@@ -229,7 +230,20 @@ async function runProject(config, projectDir) {
   // Spawn'dan önceki port durumunu kaydet (bkz. detectPort/snapshotOpenPorts).
   const preOpenPorts = await snapshotOpenPorts(COMMON_DEV_PORTS);
 
-  const [cmd, ...args] = parseCommand(command);
+  // Kurulum ANI native bağımlılıkları (varsa) doğru Node sürümüne göre
+  // derlemiş olabilir (bkz. setupProject.js), ama proje bu sürümle
+  // ÇALIŞTIRILMAZSA Node ABI uyuşmazlığı yüzünden yine patlayabilir. Aynı
+  // .nvmrc/engines.node tespiti burada da uygulanıp komut bash üzerinden
+  // (nvm doğru sürümü devreye aldıktan sonra) başlatılıyor.
+  const nvmPrefix = getNvmCommandPrefix(projectDir);
+  let cmd;
+  let args;
+  if (nvmPrefix) {
+    cmd = 'bash';
+    args = ['-c', `${nvmPrefix}${command}`];
+  } else {
+    [cmd, ...args] = parseCommand(command);
+  }
   const child = spawn(cmd, args, {
     cwd: projectDir,
     detached: true,
