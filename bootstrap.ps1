@@ -1,20 +1,20 @@
 # Airalo Dev Setup — Bootstrap (Windows)
 #
-# Sifir bir makinede (Node/Git/GitHub CLI dahil hicbir sey kurulu degilken)
-# calistirilacak TEK komut budur. Amac: dev-setup-cli'i calistirabilmek icin
-# gereken minimum arac zincirini (winget -> git/node/gh) kurmak, GitHub'a
-# giris yaptirmak, asil araci clone'lamak ve ona devretmek. bootstrap.sh'in
-# (macOS) birebir Windows/PowerShell esdegeridir.
+# This is the ONE command to run on a fresh machine (nothing installed yet,
+# not even Node/Git/GitHub CLI). Goal: install the minimum toolchain needed
+# to run dev-setup-cli (winget -> git/node/gh), sign in to GitHub, clone the
+# actual tool, and hand off to it. This is the exact Windows/PowerShell
+# equivalent of bootstrap.sh (macOS).
 #
-# Kullanim (PowerShell'i YONETICI OLARAK acip, yeni bir makinede tek satir):
+# Usage (open PowerShell AS ADMINISTRATOR, on a new machine, one line):
 #   irm https://raw.githubusercontent.com/fatihtzn/dev-setup-cli/main/bootstrap.ps1 | iex
 #
-# ya da bu dosya elle indirilip/kopyalanip calistirilabilir:
+# or download/copy this file manually and run it:
 #   .\bootstrap.ps1
 #
-# NOT: Bu script gercek bir Windows makinesinde henuz test edilmedi
-# (bootstrap.sh macOS'ta gercek calistirmalarla dogrulandi, bu Windows
-# esdegeri sadece mantiksal olarak yazildi) -- ilk calistirmada dikkatli ol.
+# NOTE: this script has not been tested on a real Windows machine yet
+# (bootstrap.sh was verified with real runs on macOS; this Windows
+# equivalent was only written logically) -- be careful on first use.
 
 $ErrorActionPreference = "Stop"
 
@@ -45,14 +45,14 @@ function Update-SessionPath {
 
 Write-Host ""
 Write-Host "Airalo Dev Setup - Bootstrap (Windows)" -ForegroundColor White
-Write-Host "Bu script git/node/gh eksikse kurar, GitHub'a giris yaptirir, sonra dev-setup-cli'a devreder."
+Write-Host "This script installs git/node/gh if missing, signs you in to GitHub, then hands off to dev-setup-cli."
 Write-Host ""
 
-# ---- 1) winget kontrolu -----------------------------------------------------
+# ---- 1) Check for winget -----------------------------------------------------
 if (-not (Test-CommandExists "winget")) {
-    Write-Fail "winget bulunamadi. Windows 10 (1709+)/11'de 'App Installer' Microsoft Store'dan kurulu olmali. Kurup script'i tekrar calistir: https://apps.microsoft.com/detail/9nblggh4nns1"
+    Write-Fail "winget not found. On Windows 10 (1709+)/11, 'App Installer' must be installed from the Microsoft Store. Install it and re-run the script: https://apps.microsoft.com/detail/9nblggh4nns1"
 }
-Write-Ok "winget mevcut."
+Write-Ok "winget available."
 
 # ---- 2) git / node / gh -----------------------------------------------------
 $tools = @(
@@ -63,19 +63,19 @@ $tools = @(
 
 foreach ($tool in $tools) {
     if (Test-CommandExists $tool.Cmd) {
-        Write-Ok "$($tool.Cmd) zaten kurulu."
+        Write-Ok "$($tool.Cmd) already installed."
         continue
     }
-    Write-Info "$($tool.Cmd) kuruluyor (winget install --id $($tool.WingetId))..."
+    Write-Info "Installing $($tool.Cmd) (winget install --id $($tool.WingetId))..."
     winget install --id $tool.WingetId --silent --accept-package-agreements --accept-source-agreements
     Update-SessionPath
     if (-not (Test-CommandExists $tool.Cmd)) {
-        Write-Fail "$($tool.Cmd) kuruldu ama bu oturumda hala bulunamiyor. Yeni bir PowerShell penceresi ac ve script'i tekrar calistir."
+        Write-Fail "$($tool.Cmd) was installed but still cannot be found in this session. Open a new PowerShell window and re-run the script."
     }
-    Write-Ok "$($tool.Cmd) kuruldu."
+    Write-Ok "$($tool.Cmd) installed."
 }
 
-# ---- 3) GitHub'a giris (Okta SSO, tarayicida) ------------------------------
+# ---- 3) Sign in to GitHub (Okta SSO, in the browser) -----------------------
 $ghAuthOk = $true
 try {
     gh auth status *> $null
@@ -84,23 +84,23 @@ try {
 }
 
 if ($ghAuthOk) {
-    Write-Ok "GitHub CLI zaten giris yapilmis."
+    Write-Ok "GitHub CLI is already signed in."
 } else {
-    Write-Info "GitHub girisi gerekiyor. Tarayici acilacak, Okta SSO ile giris yap (MFA dahil)."
+    Write-Info "GitHub sign-in required. A browser will open, sign in via Okta SSO (including MFA)."
     gh auth login --web --git-protocol ssh
 }
 
-# ---- 4) dev-setup-cli'i clone'la (zaten varsa gunceller) -------------------
+# ---- 4) Clone dev-setup-cli (updates it if already present) ---------------
 if (Test-Path (Join-Path $CloneDir ".git")) {
-    Write-Info "dev-setup-cli zaten $CloneDir altinda, guncelleniyor..."
+    Write-Info "dev-setup-cli already exists at $CloneDir, updating..."
     git -C $CloneDir pull --ff-only
 } else {
-    Write-Info "dev-setup-cli clone'laniyor -> $CloneDir"
+    Write-Info "Cloning dev-setup-cli -> $CloneDir"
     git clone $RepoUrl $CloneDir
 }
 
-# ---- 5) npm bagimliliklari + asil araci calistir ---------------------------
-Write-Info "Bagimliliklar kuruluyor (npm install)..."
+# ---- 5) Install npm dependencies and run the actual tool -------------------
+Write-Info "Installing dependencies (npm install)..."
 Push-Location $CloneDir
 try {
     npm install --no-audit --no-fund
@@ -108,6 +108,6 @@ try {
     Pop-Location
 }
 
-Write-Ok "Hazirlik tamamlandi, dev-setup-cli'a devrediliyor..."
+Write-Ok "Setup complete, handing off to dev-setup-cli..."
 Write-Host ""
 node (Join-Path $CloneDir "bin\setup.js") @args

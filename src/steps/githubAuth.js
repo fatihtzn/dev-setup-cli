@@ -29,14 +29,14 @@ function hasPackagesScope() {
 
 function githubAuth() {
   if (isDryRun()) {
-    console.log('🧪 [dry-run] gh auth login atlandı (gerçek GitHub girişi yapılmayacak).');
+    console.log('🧪 [dry-run] gh auth login skipped (no real GitHub sign-in will happen).');
     return;
   }
 
   if (isAuthenticated()) {
-    console.log('✅ GitHub CLI zaten giriş yapılmış durumda.');
+    console.log('✅ GitHub CLI is already signed in.');
   } else {
-    console.log('\n🔐 GitHub girişi gerekiyor. Tarayıcı açılacak, Okta SSO ile giriş yap (MFA dahil).\n');
+    console.log('\n🔐 GitHub sign-in required. A browser will open, sign in via Okta SSO (including MFA).\n');
     // https protokolü: SSH key kurulu olması şartı yok, gh kendi
     // token'ıyla kimlik doğruluyor (git clone/push dahil).
     run('gh auth login --web --git-protocol https --scopes read:packages');
@@ -45,7 +45,7 @@ function githubAuth() {
   }
 
   if (!hasPackagesScope()) {
-    console.log('\n🔐 GitHub Packages (private npm/composer paketleri) için read:packages izni ekleniyor...\n');
+    console.log('\n🔐 Adding read:packages permission for GitHub Packages (private npm/composer packages)...\n');
     run('gh auth refresh --hostname github.com --scopes read:packages');
   }
 }

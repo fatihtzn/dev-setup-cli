@@ -22,30 +22,30 @@ function isOpSignedIn() {
 // op CLI tarafından dosyaya yazılır.
 function injectWith1Password(examplePath, envPath) {
   if (isDryRun()) {
-    console.log(`🧪 [dry-run] op inject -i ${examplePath} -o ${envPath} çalıştırılacaktı.`);
+    console.log(`🧪 [dry-run] op inject -i ${examplePath} -o ${envPath} would have been run.`);
     return { ok: true, simulated: true };
   }
 
   if (!isOpAvailable()) {
     console.log(
-      '⚠️  1Password CLI (op) bulunamadı. Kurulum: "brew install 1password-cli" (macOS) / "winget install AgileBits.1Password-CLI" (Windows)'
+      '⚠️  1Password CLI (op) not found. Install: "brew install 1password-cli" (macOS) / "winget install AgileBits.1Password-CLI" (Windows)'
     );
     return { ok: false, reason: 'op-not-found' };
   }
 
   if (!isOpSignedIn()) {
     console.log(
-      '⚠️  1Password CLI\'a giriş yapılmamış görünüyor. 1Password masaüstü uygulamasında "CLI ile entegrasyon" ayarını aç ya da `op signin` çalıştır.'
+      '⚠️  1Password CLI does not appear to be signed in. Enable "Integrate with 1Password CLI" in the 1Password desktop app, or run `op signin`.'
     );
     return { ok: false, reason: 'not-signed-in' };
   }
 
   try {
     execFileSync('op', ['inject', '-i', examplePath, '-o', envPath], { stdio: 'inherit' });
-    console.log('✅ .env, 1Password üzerinden gerçek secret değerleriyle oluşturuldu.');
+    console.log('✅ .env created with real secret values from 1Password.');
     return { ok: true };
   } catch (err) {
-    console.log(`⚠️  1Password ile secret enjeksiyonu başarısız oldu: ${err.message}`);
+    console.log(`⚠️  Secret injection via 1Password failed: ${err.message}`);
     return { ok: false, reason: 'inject-failed' };
   }
 }

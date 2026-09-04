@@ -1,22 +1,22 @@
 {
-  "_readme": "Repo listesi artik GitHub'dan otomatik cekiliyor. Bu dosyaya SADECE bir projenin generic (otomatik-tespit) davranisindan farkli, ozel bir ayara ihtiyaci varsa kayit ekle. Key = GitHub repo adinin BIREBIR ayni olmali. secretManager: '1password' verilirse .env.example icindeki op://vault/item/field referanslari 'op inject' ile gercek degerlerle doldurulur (1Password CLI kurulu ve giris yapilmis olmali); yoksa .env.example duz kopyalanir. healthCheckPort verilirse docker compose up sonrasi o port dinlemeye baslayana kadar beklenir; verilmezse docker-compose.yml'deki ilk yayinlanmis port otomatik tespit edilir. Docker gerektirmeyen projelerde runCommand verilirse (orn. 'npm run start:dev') kurulum sonrasi o komut arka planda calistirilir; verilmezse sirasiyla package.json'daki dev/start/serve script'i, sonra Laravel projelerinde (artisan dosyasi varsa) 'php artisan serve', o da yoksa README.md'deki guvenli (npm/yarn/pnpm ile baslayan) komut kullanilir. runPort verilirse portu log'dan tahmin etmek yerine dogrudan o port health-check edilir. postCloneCommands otomatik tespitinde composer.json varsa 'composer install' de eklenir (npm/yarn/pnpm ile ayni repoda birlikte bulunabilirler).",
+  "_readme": "The repo list is now fetched automatically from GitHub. Only add an entry to this file when a project needs a special setting that differs from the generic (auto-detected) behavior. Key = must exactly match the GitHub repo name. If secretManager is '1password', op://vault/item/field references inside .env.example are filled in with real values via 'op inject' (the 1Password CLI must be installed and signed in); otherwise .env.example is copied as-is. If healthCheckPort is given, after 'docker compose up' the tool waits until that port starts listening; if not given, the first published port in docker-compose.yml is auto-detected. For projects that don't require Docker, if runCommand is given (e.g. 'npm run start:dev') that command is run in the background after setup; if not given, the dev/start/serve script in package.json is used, then for Laravel projects (if an artisan file exists) 'php artisan serve', and if none of those apply, a safe command (starting with npm/yarn/pnpm) found in README.md. If runPort is given, that port is health-checked directly instead of guessing it from logs. In postCloneCommands auto-detection, 'composer install' is also added if composer.json exists (it can coexist with npm/yarn/pnpm in the same repo).",
   "Frontend": {
     "web-app": {
-      "displayName": "Web App (Ana Frontend Projesi)",
+      "displayName": "Web App (Main Frontend Project)",
       "postCloneCommands": [
         "npm install"
       ],
-      "readyMessage": "Web app hazir! http://localhost:3000 adresinden kontrol edebilirsin."
+      "readyMessage": "Web app is ready! Check it out at http://localhost:3000."
     },
     "airalo-partner-panel-frontend": {
       "displayName": "Airalo Partner Panel (Frontend)",
-      "readyMessage": "Partner Panel hazir! http://localhost:5173 adresinden kontrol edebilirsin."
+      "readyMessage": "Partner Panel is ready! Check it out at http://localhost:5173."
     }
   },
   "Backend": {
     "test-task": {
       "displayName": "Test Task (Laravel + Vite demo)",
-      "readyMessage": "Docker ile ayaga kalkti! http://localhost:8080 adresinden kontrol edebilirsin."
+      "readyMessage": "Up and running via Docker! Check it out at http://localhost:8080."
     },
     "airalo-partner-backend": {
       "displayName": "Airalo Partner Backend",
@@ -29,7 +29,7 @@
         "docker compose run --rm php php artisan passport:install --force",
         "docker compose run --rm php php artisan db:seed --force"
       ],
-      "readyMessage": "Docker build + composer install (private airalo/* dahil) + key:generate + jwt:secret + DB migrate + passport:install + db:seed tamamlandi. Uygulama artik gercekten calisiyor (713 route kayitli, DB/cache/rate-limit calisiyor) -- ornek: curl -H 'Host: partners.airalo.local' http://localhost:8081/internal/v1/health . Bazi .env.example alanlari bos oldugu icin (VIEW_COMPILED_PATH, AWS_SQS_VERSION, ATTR_EMULATE_PREPARES, TRANSLATION_DRIVER, BCRYPT_ROUNDS, JWT_ALGO, INTERNAL_HEALTH_CHECK_RATE_LIMIT/TIMEOUT, RATE_LIMITER_CACHE_DRIVER -- bu son ikisi redis servisi compose'da olmadigi icin 'file'a cekildi) local'de otomatik dolduruldu; bu gercek bir Airalo backend .env.example eksigi, ekibe bildirilmesi faydali olur. /internal/v1/health endpoint'i AIRALO_URL (gercek bir Airalo API adresi) gerektiriyor, bu deger bilinmedigi/uydurulamayacagi icin bos birakildi -- doldurursan health-check tam calisir."
+      "readyMessage": "Docker build + composer install (including private airalo/*) + key:generate + jwt:secret + DB migrate + passport:install + db:seed completed. The app is genuinely running now (713 routes registered, DB/cache/rate-limit working) -- try: curl -H 'Host: partners.airalo.local' http://localhost:8081/internal/v1/health . Because some .env.example fields were empty (VIEW_COMPILED_PATH, AWS_SQS_VERSION, ATTR_EMULATE_PREPARES, TRANSLATION_DRIVER, BCRYPT_ROUNDS, JWT_ALGO, INTERNAL_HEALTH_CHECK_RATE_LIMIT/TIMEOUT, RATE_LIMITER_CACHE_DRIVER -- the last two were set to 'file' since no redis service exists in the compose file) they were auto-filled locally; this is a genuine gap in the real Airalo backend's .env.example, worth reporting to the team. The /internal/v1/health endpoint requires AIRALO_URL (a real Airalo API address), which was left empty since that value is unknown and shouldn't be guessed -- fill it in for the health-check to fully work."
     }
   },
   "Mobile": {},

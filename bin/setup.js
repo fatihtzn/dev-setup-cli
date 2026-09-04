@@ -24,10 +24,10 @@ async function main() {
   const { dryRun } = parseArgs(process.argv.slice(2));
   setDryRun(dryRun);
 
-  console.log('👋 Şirket Dev Ortamı Kurulum Aracına hoş geldin!\n');
+  console.log('👋 Welcome to the Company Dev Environment Setup Tool!\n');
   if (isDryRun()) {
     console.log(
-      '🧪 DRY RUN modu aktif: gh CLI çağrılmayacak, dosya sistemine yazılmayacak/klonlanmayacak, akış sadece simüle edilecek.\n'
+      '🧪 DRY RUN mode active: the gh CLI will not be called, nothing will be written to disk/cloned — the flow will only be simulated.\n'
     );
   }
 
@@ -37,7 +37,7 @@ async function main() {
   githubAuth();
 
   const { projectKey, config: initialConfig } = await selectProject();
-  console.log(`\n➡️  Seçim: ${initialConfig.displayName}\n`);
+  console.log(`\n➡️  Selected: ${initialConfig.displayName}\n`);
 
   const targetDir = path.join(process.cwd(), projectKey);
   cloneRepo(initialConfig, targetDir);
@@ -61,18 +61,18 @@ async function main() {
   // dockerUp başarısız olduysa, proje-özel readyMessage ("... çalışıyor!" gibi)
   // yanıltıcı olur — bu yüzden o durumda gösterilmez, sadece uyarı basılır.
   if (dockerOk) {
-    console.log(`\n🎉 ${config.readyMessage || 'Kurulum tamamlandı, kod yazmaya hazırsın!'}\n`);
+    console.log(`\n🎉 ${config.readyMessage || 'Setup complete, you are ready to start coding!'}\n`);
   } else {
-    console.log('\n⚠️  Kurulum tamamlandı ama Docker Compose başlatılamadı — yukarıdaki hataya bak.\n');
+    console.log('\n⚠️  Setup finished but Docker Compose failed to start — check the error above.\n');
   }
   if (failedCommands.length) {
-    console.log('⚠️  Şu kurulum komutları başarısız oldu, elle tekrar bakman gerekebilir:');
+    console.log('⚠️  The following setup commands failed, you may need to check them manually:');
     failedCommands.forEach((cmd) => console.log(`  - ${cmd}`));
     console.log();
   }
 }
 
 main().catch((err) => {
-  console.error('\n❌ Bir hata oluştu:', err.message);
+  console.error('\n❌ An error occurred:', err.message);
   process.exit(1);
 });
