@@ -48,6 +48,42 @@ fail()  { printf '%s\n' "${RED}❌ $*${RESET}"; exit 1; }
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
+# gh'nin kendi "Enter'a bas -> tarayıcıyı aç" mekanizması bazı sanal
+# makinelerde (ör. ekran paylaşımlı VM) Enter'a basılsa bile tarayıcıyı
+# sessizce açmayabiliyor (gerçek testte gözlemlendi). Bu yüzden gh'nin
+# çıktısını arka planda izleyip login URL'ini biz de `open` ile açıyoruz —
+# gh'nin normal akışını bozmamak için `script` ile gerçek bir pty'ye
+# bağlıyoruz (aksi halde stdout pipe'a döner, gh interaktif modu/renk
+# çıktısını kapatabilir). Hem "gh auth login" hem "gh auth refresh" aynı
+# tarayıcı-açma davranışını kullandığı için ortak bir fonksiyon.
+run_gh_auth_with_reliable_browser_open() {
+  if ! command_exists script; then
+    "$@"
+    return
+  fi
+  local log
+  log="$(mktemp)"
+  (
+    for _ in $(seq 1 300); do
+      if [ -s "$log" ]; then
+        url="$(grep -oE 'https://github\.com/login/device[^[:space:]]*' "$log" 2>/dev/null | head -1 || true)"
+        if [ -n "$url" ]; then
+          open "$url" >/dev/null 2>&1 || true
+          break
+        fi
+      fi
+      sleep 0.2
+    done
+  ) &
+  local watcher_pid=$!
+
+  script -q "$log" "$@"
+
+  kill "$watcher_pid" >/dev/null 2>&1 || true
+  wait "$watcher_pid" 2>/dev/null || true
+  rm -f "$log"
+}
+
 if [ "$(id -u)" -eq 0 ]; then
   fail "Bu script'i sudo ile çalıştırma. sudo altında \$HOME /var/root'a döner; clone, gh girişi ve PATH ayarları senin kullanıcına değil root'a gider. Normal kullanıcı olarak (sudo'suz) tekrar çalıştır — brew/gh gerektiğinde kendi şifreni zaten soracak."
 fi
@@ -111,40 +147,12 @@ else
   info "GitHub girişi gerekiyor. Tarayıcı açılacak, Okta SSO ile giriş yap (MFA dahil)."
   # https protokolü: makinede SSH key kurulu/kayıtlı olması şartı yok,
   # gh kendi token'ıyla kimlik doğruluyor (git clone/push dahil).
-  #
-  # gh'nin kendi "Enter'a bas -> tarayıcıyı aç" mekanizması bazı sanal
-  # makinelerde (ör. ekran paylaşımlı VM) Enter'a basılsa bile tarayıcıyı
-  # sessizce açmayabiliyor (gerçek testte gözlemlendi). Bu yüzden gh'nin
-  # çıktısını arka planda izleyip login URL'ini biz de `open` ile
-  # açıyoruz — gh'nin normal akışını bozmamak için `script` ile gerçek bir
-  # pty'ye bağlıyoruz (aksi halde stdout pipe'a döner, gh interaktif
-  # modu/renk çıktısını kapatabilir).
-  if command_exists script; then
-    GH_LOGIN_LOG="$(mktemp)"
-    (
-      for _ in $(seq 1 300); do
-        if [ -s "$GH_LOGIN_LOG" ]; then
-          url="$(grep -oE 'https://github\.com/login/device[^[:space:]]*' "$GH_LOGIN_LOG" 2>/dev/null | head -1 || true)"
-          if [ -n "$url" ]; then
-            open "$url" >/dev/null 2>&1 || true
-            break
-          fi
-        fi
-        sleep 0.2
-      done
-    ) &
-    WATCHER_PID=$!
+  # read:packages: GitHub Packages'tan (npm.pkg.github.com) private paket
+  # çekebilmek için gerekli, gh'nin varsayılan minimum scope seti bunu
+  # içermez (aşağıdaki read:packages kontrolüne bakınız).
+  run_gh_auth_with_reliable_browser_open gh auth login --web --git-protocol https --scopes read:packages
 
-    script -q "$GH_LOGIN_LOG" gh auth login --web --git-protocol https
-
-    kill "$WATCHER_PID" >/dev/null 2>&1 || true
-    wait "$WATCHER_PID" 2>/dev/null || true
-    rm -f "$GH_LOGIN_LOG"
-  else
-    gh auth login --web --git-protocol https
-  fi
-
-  gh auth status >/dev/null 2>&1 || fail "GitHub girişi tamamlanamadı. Tekrar dene: gh auth login --web --git-protocol https"
+  gh auth status >/dev/null 2>&1 || fail "GitHub girişi tamamlanamadı. Tekrar dene: gh auth login --web --git-protocol https --scopes read:packages"
 fi
 
 # Daha önce ssh protokolüyle giriş yapılmış olabilir (eski bootstrap
@@ -154,6 +162,17 @@ fi
 # ezer — ikisini de set etmezsek "gh repo clone" sessizce ssh'e döner.
 gh config set git_protocol https
 gh config set -h github.com git_protocol https
+
+# gh'nin varsayılan minimum scope seti (repo, read:org, gist) GitHub
+# Packages'ı (npm.pkg.github.com) İÇERMEZ — bazı Airalo JS repoları
+# bağımlılıklarını oradan private paket olarak çeker (gerçek bir Airalo
+# frontend reposunda "Invalid authentication"/403 permission_denied ile
+# gözlemlendi). Daha önce (bu scope talep edilmeden) giriş yapılmış olabilir,
+# bu yüzden burada da idempotent şekilde kontrol edip eksikse ekliyoruz.
+if ! gh auth status 2>&1 | grep -q "read:packages"; then
+  info "GitHub Packages (private npm paketleri) için read:packages izni ekleniyor..."
+  run_gh_auth_with_reliable_browser_open gh auth refresh --hostname github.com --scopes read:packages
+fi
 gh auth setup-git >/dev/null 2>&1 || true
 
 # ---- 4) dev-setup-cli'ı clone'la (zaten varsa günceller) -------------------

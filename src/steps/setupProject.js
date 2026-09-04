@@ -185,14 +185,24 @@ function autoDetect(config, projectDir) {
       commands.push('composer install');
     }
 
+    // Bazı Airalo JS repoları paket.json bağımlılıklarını GitHub Packages'tan
+    // (npm.pkg.github.com) çeker; bu private scope'lar kimlik doğrulama
+    // ister. actions/setup-node'un yaygınlaştırdığı NODE_AUTH_TOKEN
+    // konvansiyonu (.yarnrc.yml'de "npmAuthToken: ${NODE_AUTH_TOKEN}" gibi)
+    // gerçek bir Airalo reposunda (airalo-partner-panel-frontend) gözlemlendi
+    // — anonim istek "Invalid authentication" ile patlıyordu. gh zaten giriş
+    // yapılmış olduğundan token'ı oradan sağlıyoruz; repo bu değişkeni hiç
+    // kullanmıyorsa zararsız, kullanıyorsa otomatik doğru çalışır.
+    const NODE_AUTH_TOKEN_PREFIX = 'NODE_AUTH_TOKEN="$(gh auth token 2>/dev/null)" ';
+
     if (fs.existsSync(path.join(projectDir, 'pnpm-lock.yaml'))) {
       ensureCorepackAvailable(commands);
-      commands.push('corepack pnpm install');
+      commands.push(`${NODE_AUTH_TOKEN_PREFIX}corepack pnpm install`);
     } else if (fs.existsSync(path.join(projectDir, 'yarn.lock'))) {
       ensureCorepackAvailable(commands);
-      commands.push('corepack yarn install');
+      commands.push(`${NODE_AUTH_TOKEN_PREFIX}corepack yarn install`);
     } else if (fs.existsSync(path.join(projectDir, 'package.json'))) {
-      commands.push('npm install');
+      commands.push(`${NODE_AUTH_TOKEN_PREFIX}npm install`);
     }
 
     detected.postCloneCommands = commands;
