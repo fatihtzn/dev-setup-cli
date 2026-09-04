@@ -1,7 +1,7 @@
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 
 function getPlatform() {
   const p = os.platform();
@@ -21,7 +21,37 @@ function commandExists(cmd) {
   }
 }
 
+// Bu araç kendi ürettiği (postCloneCommands, docker compose komutları vb.)
+// komutları hep POSIX/bash söz dizimiyle yazıyor (`$(...)`, `>/dev/null
+// 2>&1`, `VAR="değer" komut`, `until ... do ... done` gibi) — Windows'ta
+// execSync varsayılan olarak cmd.exe kullanır ve cmd.exe bu söz dizimini
+// hiç anlamaz ("'NODE_AUTH_TOKEN' is not recognized..." gibi hatalarla
+// gerçek bir Windows VM'de gözlemlendi). Git for Windows zaten zorunlu bir
+// bağımlılığımız (REQUIRED_TOOLS) ve kendi gerçek POSIX bash'ini
+// (bash.exe/MSYS2) getiriyor — Windows'ta tüm bu komutları cmd.exe yerine
+// o bash'e yönlendirerek, komutları hiç değiştirmeden macOS'takiyle birebir
+// aynı şekilde çalıştırabiliyoruz.
+function findWindowsBash() {
+  const candidates = [
+    'C:\\Program Files\\Git\\bin\\bash.exe',
+    'C:\\Program Files (x86)\\Git\\bin\\bash.exe',
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return commandExists('bash') ? 'bash' : null;
+}
+
 function run(cmd, options = {}) {
+  if (getPlatform() === 'windows') {
+    const bash = findWindowsBash();
+    if (bash) {
+      // execFileSync (execSync değil): cmd tek bir argüman olarak bash'e
+      // geçer, cmd.exe hiç devreye girmez, bu yüzden tırnak/özel karakter
+      // kaçışına gerek kalmaz — bash kendi POSIX parser'ıyla ayrıştırır.
+      return execFileSync(bash, ['-c', cmd], { stdio: 'inherit', ...options });
+    }
+  }
   return execSync(cmd, { stdio: 'inherit', ...options });
 }
 
