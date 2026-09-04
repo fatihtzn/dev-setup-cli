@@ -12,7 +12,7 @@ kullandığı desenin aynısı), her platform için ayrı:
 
 **macOS** (`bootstrap.sh`, bash):
 ```bash
-curl -fsSL https://raw.githubusercontent.com/fatihtzn/dev-setup-cli/main/bootstrap.sh | bash
+bash <(curl -fsSL https://raw.githubusercontent.com/fatihtzn/dev-setup-cli/main/bootstrap.sh)
 ```
 
 **Windows** (`bootstrap.ps1`, PowerShell — winget kullanır):
@@ -24,21 +24,23 @@ irm https://raw.githubusercontent.com/fatihtzn/dev-setup-cli/main/bootstrap.ps1 
 (yoksa) kurar → GitHub'a giriş yaptırır (Okta SSO, tarayıcıda) → aracın kendisini
 clone'lar → `node bin/setup.js`'e devreder.
 
-**Doğrulama durumu:** `bootstrap.sh` bu oturumda macOS'ta gerçek çalıştırmalarla
-test edildi (araç kurulum mekanizması dahil). `bootstrap.ps1` bu makine macOS
-olduğu için gerçek bir Windows makinesinde **henüz hiç test edilmedi** — mantıksal
-olarak yazıldı, ilk kullanımda dikkatli ol ve sorun bulursan bildir.
+> ⚠️ **`curl ... | bash` (pipe) DEĞİL, `bash <(curl ...)` (process substitution)
+> kullan.** Pipe'ta script'in stdin'i curl çıktısıyla dolduğu için terminal artık
+> TTY değildir; bu yüzden `gh auth login --web` tarayıcıyı otomatik açamaz, sadece
+> kodu/URL'i basıp kalır ("Running in non-interactive mode because `stdin` is not
+> a TTY" uyarısı bunun belirtisidir). Process substitution'da stdin gerçek
+> terminalde kalır, tarayıcı otomatik açılır.
+>
+> ⚠️ **Script'i `sudo` ile çalıştırma.** sudo altında `$HOME` `/var/root`'a döner;
+> clone, gh girişi ve PATH ayarları normal kullanıcına değil root'a gider ve
+> senin terminalinden görünmez olur. brew/gh gerektiğinde kendi şifreni zaten
+> soracaktır — script'i düz kullanıcı olarak çalıştır.
 
-> ⚠️ **Repo private olduğu sürece yukarıdaki tek satırlar çalışmaz** —
-> `raw.githubusercontent.com` private reponun içeriğini anonim isteklere
-> döndürmüyor (404). `git clone` adımı sorun değil (script önce `gh auth login`
-> yaptırıp SSH ile private repo'ya erişiyor) — sorun sadece bootstrap script'ini
-> sıfır makineye ilk ulaştırma adımı. Repo private kaldığı sürece script'i elle
-> kopyala (`scp bootstrap.sh kullanici@makine:~/` gibi) ya da içeriğini hedef
-> makinede bir düzenleyiciyle yapıştır, sonra çalıştır. Araç resmi Airalo iş
-> akışına geçtiğinde ya bootstrap script'leri ayrı, herkese görünür (public) bir
-> gist/repo'da tutulabilir (asıl kod yine private kalır), ya da şirket içi bir
-> dağıtım kanalından (VM imajı, MDM script'i vb.) verilebilir.
+**Doğrulama durumu:** `bootstrap.sh` hem macOS'ta hem gerçek bir VM'de uçtan uca
+test edildi (Homebrew kurulumu, PATH kalıcılığı, gh HTTPS girişi dahil).
+`bootstrap.ps1` bu makine macOS olduğu için gerçek bir Windows makinesinde
+**henüz hiç test edilmedi** — mantıksal olarak yazıldı, ilk kullanımda dikkatli
+ol ve sorun bulursan bildir.
 
 ### Zaten git/node/gh kuruluysa
 ```bash

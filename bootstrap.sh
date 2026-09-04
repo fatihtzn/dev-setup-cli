@@ -8,10 +8,21 @@
 # giriş yaptırmak, asıl aracı clone'lamak ve ona devretmek.
 #
 # Kullanım (yeni bir makinede, terminali açıp tek satır):
-#   curl -fsSL https://raw.githubusercontent.com/fatihtzn/dev-setup-cli/main/bootstrap.sh | bash
+#   bash <(curl -fsSL https://raw.githubusercontent.com/fatihtzn/dev-setup-cli/main/bootstrap.sh)
 #
 # ya da bu dosya elle indirilip/kopyalanıp çalıştırılabilir:
 #   bash bootstrap.sh
+#
+# ÖNEMLİ: "curl ... | bash" (pipe) DEĞİL, "bash <(curl ...)" (process
+# substitution) kullanılmalı. Pipe'ta script'in stdin'i curl'ün çıktısıyla
+# dolduğu için terminal artık TTY değildir; bu da "gh auth login --web"in
+# tarayıcıyı otomatik açmasını engeller (sadece kodu/URL'i basıp kalır).
+# Process substitution'da script bir dosya argümanı gibi okunur, stdin
+# gerçek terminalde kalır, tarayıcı otomatik açılır.
+#
+# ÖNEMLİ: bu script'i SUDO ile çalıştırma. sudo altında $HOME kökün evine
+# (/var/root) döner; clone, gh girişi ve PATH ayarları yanlış kullanıcıya
+# gider ve normal terminalinden görünmez olur.
 #
 # NOT: Şu an fatihtzn'in KİŞİSEL (private) reposuna işaret ediyor —
 # bu araç gerçek Airalo GitHub org'una taşındığında burası ve yukarıdaki
@@ -36,6 +47,10 @@ ok()    { printf '%s\n' "${GREEN}✅ $*${RESET}"; }
 fail()  { printf '%s\n' "${RED}❌ $*${RESET}"; exit 1; }
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
+
+if [ "$(id -u)" -eq 0 ]; then
+  fail "Bu script'i sudo ile çalıştırma. sudo altında \$HOME /var/root'a döner; clone, gh girişi ve PATH ayarları senin kullanıcına değil root'a gider. Normal kullanıcı olarak (sudo'suz) tekrar çalıştır — brew/gh gerektiğinde kendi şifreni zaten soracak."
+fi
 
 OS="$(uname -s)"
 if [ "$OS" != "Darwin" ]; then
