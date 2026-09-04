@@ -13,10 +13,10 @@ function cloneRepo(config, targetDir) {
     return;
   }
   if (fs.existsSync(targetDir)) {
-    console.log(`ℹ️  "${targetDir}" zaten mevcut, clone atlanıyor.`);
+    console.log(`ℹ️  "${targetDir}" already exists, skipping clone.`);
     return;
   }
-  console.log(`\n📥 Repo klonlanıyor: ${config.repo}`);
+  console.log(`\n📥 Cloning repo: ${config.repo}`);
   // Ham "git clone" SSH URL'i (git@github.com:...) gerektirir; makinede
   // GitHub'a kayıtlı bir SSH key olmayan taze bir kurulumda "Permission
   // denied (publickey)" ile patlar (gerçek VM testinde gözlemlendi).
@@ -31,7 +31,7 @@ function setupEnv(config, projectDir) {
   const envPath = path.join(projectDir, '.env');
 
   if (!isDryRun() && fs.existsSync(envPath)) {
-    console.log('ℹ️  .env zaten mevcut, dokunulmadı.');
+    console.log('ℹ️  .env already exists, left untouched.');
     return;
   }
 
@@ -39,23 +39,23 @@ function setupEnv(config, projectDir) {
   // akışı yine de gösterebilmek adına varmış gibi devam ederiz.
   const exampleExists = isDryRun() || fs.existsSync(examplePath);
   if (!exampleExists) {
-    console.log('⚠️  .env.example bulunamadı, .env manuel oluşturulmalı.');
+    console.log('⚠️  .env.example not found, .env needs to be created manually.');
     return;
   }
 
   if (config.secretManager === '1password') {
     const result = injectWith1Password(examplePath, envPath);
     if (result.ok) return;
-    console.log('ℹ️  Bunun yerine .env.example düz kopyalanacak, gerçek değerleri elle doldurman gerekecek.');
+    console.log('ℹ️  Falling back to a plain copy of .env.example — you will need to fill in the real values manually.');
   }
 
   if (isDryRun()) {
-    console.log(`🧪 [dry-run] ${examplePath} -> ${envPath} kopyalanacaktı.`);
+    console.log(`🧪 [dry-run] ${examplePath} -> ${envPath} would have been copied.`);
     return;
   }
 
   fs.copyFileSync(examplePath, envPath);
-  console.log('✅ .env, .env.example üzerinden oluşturuldu. Gerçek değerleri doldurmayı unutma.');
+  console.log('✅ .env created from .env.example. Remember to fill in the real values.');
 }
 
 // Bir postCloneCommand (örn. composer install) reponun kendi yapılandırma
@@ -74,7 +74,7 @@ function runPostCloneCommands(config, projectDir) {
     try {
       run(cmd, { cwd: projectDir });
     } catch (err) {
-      console.log(`⚠️  "${cmd}" başarısız oldu, devam ediliyor: ${err.message}`);
+      console.log(`⚠️  "${cmd}" failed, continuing: ${err.message}`);
       failed.push(cmd);
     }
   }
@@ -152,7 +152,7 @@ function autoDetect(config, projectDir) {
     if (detected.requiresDocker === undefined) detected.requiresDocker = false;
     if (!detected.postCloneCommands) detected.postCloneCommands = [];
     console.log(
-      '🧪 [dry-run] Repo gerçekten klonlanmadığı için docker-compose/paket yöneticisi tespiti atlandı (override tanımlıysa o kullanılıyor).'
+      '🧪 [dry-run] Docker Compose/package manager detection skipped since the repo was not actually cloned (an override, if defined, is used instead).'
     );
     return detected;
   }
@@ -218,12 +218,12 @@ async function dockerUp(config, projectDir) {
   if (isDryRun()) {
     console.log(`🧪 [dry-run] docker compose -f ${composeFile} up -d`);
     if (config.healthCheckPort) {
-      console.log(`🧪 [dry-run] localhost:${config.healthCheckPort} portu hazır olana kadar beklenecekti.`);
+      console.log(`🧪 [dry-run] would have waited for localhost:${config.healthCheckPort} to be ready.`);
     }
     return { ok: true };
   }
 
-  console.log(`\n🐳 Docker Compose başlatılıyor (${composeFile})...`);
+  console.log(`\n🐳 Starting Docker Compose (${composeFile})...`);
   try {
     run(`docker compose -f ${composeFile} up -d`, { cwd: projectDir });
   } catch (err) {
@@ -231,25 +231,25 @@ async function dockerUp(config, projectDir) {
     // hatası vb. nedenlerle başarısız olabilir — gerçek docker hatası zaten
     // stdio:'inherit' ile ekranda görünür. Burada yakalamazsak script tüm
     // kalan adımları (kapanış mesajı dahil) durdurup üst seviye hatayla çöker.
-    console.log(`⚠️  docker compose up başarısız oldu: ${err.message}`);
-    console.log(`   Container'ları kontrol et: docker compose -f ${composeFile} ps`);
+    console.log(`⚠️  docker compose up failed: ${err.message}`);
+    console.log(`   Check the containers: docker compose -f ${composeFile} ps`);
     return { ok: false };
   }
 
   if (!config.healthCheckPort) {
-    console.log('ℹ️  docker-compose dosyasında yayınlanmış bir port bulunamadı, health-check atlanıyor.');
+    console.log('ℹ️  No published port found in the docker-compose file, skipping health-check.');
     return { ok: true };
   }
 
-  console.log(`\n⏳ localhost:${config.healthCheckPort} portunun ayağa kalkması bekleniyor...`);
+  console.log(`\n⏳ Waiting for localhost:${config.healthCheckPort} to come up...`);
   const result = await waitForPort(config.healthCheckPort, { timeoutMs: 90000 });
   if (result.ok) {
     console.log(
-      `✅ Servis ayakta: http://localhost:${config.healthCheckPort} (${Math.round(result.elapsedMs / 1000)}s içinde)`
+      `✅ Service is up: http://localhost:${config.healthCheckPort} (in ${Math.round(result.elapsedMs / 1000)}s)`
     );
   } else {
     console.log(
-      `⚠️  ${Math.round(result.elapsedMs / 1000)}s bekledikten sonra localhost:${config.healthCheckPort} portuna bağlanılamadı. Container ayakta mı diye kontrol et: docker compose -f ${composeFile} logs`
+      `⚠️  Could not connect to localhost:${config.healthCheckPort} after waiting ${Math.round(result.elapsedMs / 1000)}s. Check whether the container is up: docker compose -f ${composeFile} logs`
     );
   }
   // "up -d" komutu başarılı olduğu için ok:true — health-check timeout'u ayrı,

@@ -9,12 +9,12 @@ const MOCK_REPOS = [
   {
     name: 'web-app',
     nameWithOwner: 'ornek-org/web-app',
-    description: '(örnek) config/projects.json içindeki override ile eşleşir',
+    description: '(example) matches the override in config/projects.json',
   },
   {
     name: 'ornek-servis',
     nameWithOwner: 'ornek-org/ornek-servis',
-    description: '(örnek) override yok, generic akış çalışır',
+    description: '(example) no override, generic flow runs',
   },
 ];
 
@@ -35,29 +35,29 @@ function findOverride(repoName) {
 }
 
 async function selectProject() {
-  console.log(`\n🔎 ${ORG} altındaki projeler çekiliyor...`);
+  console.log(`\n🔎 Fetching projects under ${ORG}...`);
   let repos;
   if (isDryRun()) {
-    console.log('🧪 [dry-run] gh repo list çağrılmadı, örnek repo listesi kullanılıyor.');
+    console.log('🧪 [dry-run] gh repo list not called, using sample repo list instead.');
     repos = MOCK_REPOS;
   } else {
     try {
       repos = listRepos(ORG);
     } catch (err) {
-      console.error('❌ Repo listesi alınamadı. GitHub girişi yapıldığından emin ol (gh auth status).');
+      console.error('❌ Could not fetch the repo list. Make sure you are signed in to GitHub (gh auth status).');
       throw err;
     }
   }
 
   if (repos.length === 0) {
-    console.error(`❌ "${ORG}" altında erişebildiğin repo bulunamadı.`);
+    console.error(`❌ No accessible repos found under "${ORG}".`);
     process.exit(1);
   }
 
   const { repoName } = await prompts({
     type: 'autocomplete',
     name: 'repoName',
-    message: 'Hangi proje için kurulum yapmak istiyorsun?',
+    message: 'Which project do you want to set up?',
     choices: repos.map((r) => ({
       title: r.description ? `${r.name} — ${r.description}` : r.name,
       value: r.name,

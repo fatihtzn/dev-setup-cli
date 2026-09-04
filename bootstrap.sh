@@ -2,31 +2,32 @@
 #
 # Airalo Dev Setup — Bootstrap
 #
-# Sıfır bir makinede (Node/Git/GitHub CLI dahil hiçbir şey kurulu değilken)
-# çalıştırılacak TEK komut budur. Amaç: dev-setup-cli'ı çalıştırabilmek için
-# gereken minimum araç zincirini (Homebrew -> git/node/gh) kurmak, GitHub'a
-# giriş yaptırmak, asıl aracı clone'lamak ve ona devretmek.
+# This is the ONE command to run on a fresh machine (nothing installed yet,
+# not even Node/Git/GitHub CLI). Goal: install the minimum toolchain needed
+# to run dev-setup-cli (Homebrew -> git/node/gh), sign in to GitHub, clone
+# the actual tool, and hand off to it.
 #
-# Kullanım (yeni bir makinede, terminali açıp tek satır):
+# Usage (on a new machine, open a terminal and run this one line):
 #   bash <(curl -fsSL https://raw.githubusercontent.com/fatihtzn/dev-setup-cli/main/bootstrap.sh)
 #
-# ya da bu dosya elle indirilip/kopyalanıp çalıştırılabilir:
+# or download/copy this file manually and run it:
 #   bash bootstrap.sh
 #
-# ÖNEMLİ: "curl ... | bash" (pipe) DEĞİL, "bash <(curl ...)" (process
-# substitution) kullanılmalı. Pipe'ta script'in stdin'i curl'ün çıktısıyla
-# dolduğu için terminal artık TTY değildir; bu da "gh auth login --web"in
-# tarayıcıyı otomatik açmasını engeller (sadece kodu/URL'i basıp kalır).
-# Process substitution'da script bir dosya argümanı gibi okunur, stdin
-# gerçek terminalde kalır, tarayıcı otomatik açılır.
+# IMPORTANT: use "bash <(curl ...)" (process substitution), NOT
+# "curl ... | bash" (pipe). With a pipe, the script's stdin gets filled with
+# curl's own output, so the terminal is no longer a TTY — this prevents
+# "gh auth login --web" from opening the browser automatically (it just
+# prints the code/URL and stops). With process substitution the script is
+# read like a file argument, stdin stays the real terminal, and the browser
+# opens automatically.
 #
-# ÖNEMLİ: bu script'i SUDO ile çalıştırma. sudo altında $HOME kökün evine
-# (/var/root) döner; clone, gh girişi ve PATH ayarları yanlış kullanıcıya
-# gider ve normal terminalinden görünmez olur.
+# IMPORTANT: do not run this script with SUDO. Under sudo, $HOME points to
+# root's home (/var/root); the clone, gh sign-in, and PATH setup would then
+# go to the wrong user and be invisible from your normal terminal.
 #
-# NOT: Şu an fatihtzn'in KİŞİSEL (private) reposuna işaret ediyor —
-# bu araç gerçek Airalo GitHub org'una taşındığında burası ve yukarıdaki
-# curl URL'i güncellenmeli.
+# NOTE: this currently points at fatihtzn's PERSONAL (private) repo — once
+# this tool moves to the real Airalo GitHub org, this comment and the curl
+# URL above need to be updated.
 
 set -euo pipefail
 
@@ -85,26 +86,26 @@ run_gh_auth_with_reliable_browser_open() {
 }
 
 if [ "$(id -u)" -eq 0 ]; then
-  fail "Bu script'i sudo ile çalıştırma. sudo altında \$HOME /var/root'a döner; clone, gh girişi ve PATH ayarları senin kullanıcına değil root'a gider. Normal kullanıcı olarak (sudo'suz) tekrar çalıştır — brew/gh gerektiğinde kendi şifreni zaten soracak."
+  fail "Do not run this script with sudo. Under sudo \$HOME points to root's home, not yours; the clone, gh sign-in, and PATH setup would go to root instead of your user. Run it again as a normal user (no sudo) — brew/gh will ask for your password themselves when they actually need it."
 fi
 
 OS="$(uname -s)"
 if [ "$OS" != "Darwin" ]; then
-  fail "Bu bootstrap script'i şu an sadece macOS için test edildi (Darwin). Tespit edilen: $OS. Windows'ta bu betiği kullanma, ekip arkadaşından PowerShell eşdeğerini iste."
+  fail "This bootstrap script is currently only tested on macOS (Darwin). Detected: $OS. Don't use this script on Windows — ask a teammate for the PowerShell equivalent."
 fi
 
 echo
 echo "${BOLD}👋 Airalo Dev Setup — Bootstrap${RESET}"
-echo "Bu script git/node/gh eksikse kurar, GitHub'a giriş yaptırır, sonra dev-setup-cli'a devreder."
+echo "This script installs git/node/gh if missing, signs you in to GitHub, then hands off to dev-setup-cli."
 echo
 
 # ---- 1) Homebrew ----------------------------------------------------------
 if ! command_exists brew; then
-  info "Homebrew bulunamadı, kuruluyor (resmi kurulum betiği ile)..."
+  info "Homebrew not found, installing (via the official install script)..."
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  ok "Homebrew kuruldu."
+  ok "Homebrew installed."
 else
-  ok "Homebrew zaten kurulu."
+  ok "Homebrew already installed."
 fi
 
 # brew /opt/homebrew (Apple Silicon) ya da /usr/local (Intel) altına kurulur
@@ -124,27 +125,27 @@ if [ -n "$BREW_BIN" ]; then
   touch "${HOME}/.zprofile"
   if ! grep -qF "$SHELLENV_LINE" "${HOME}/.zprofile" 2>/dev/null; then
     printf '\n%s\n' "$SHELLENV_LINE" >> "${HOME}/.zprofile"
-    info "PATH kalıcı olarak ~/.zprofile içine eklendi (yeni terminallerde de gh/git/node bulunacak)."
+    info "PATH permanently added to ~/.zprofile (gh/git/node will also be found in new terminals)."
   fi
 fi
 
 # ---- 2) git / node / gh ----------------------------------------------------
 for tool in git node gh; do
   if command_exists "$tool"; then
-    ok "$tool zaten kurulu."
+    ok "$tool already installed."
     continue
   fi
-  info "$tool kuruluyor (brew install $tool)..."
+  info "Installing $tool (brew install $tool)..."
   brew install "$tool"
-  command_exists "$tool" || fail "$tool kurulamadı, elle 'brew install $tool' çalıştırıp tekrar dene."
-  ok "$tool kuruldu."
+  command_exists "$tool" || fail "$tool could not be installed, run 'brew install $tool' manually and try again."
+  ok "$tool installed."
 done
 
-# ---- 3) GitHub'a giriş (Okta SSO, tarayıcıda) ------------------------------
+# ---- 3) Sign in to GitHub (Okta SSO, in the browser) -----------------------
 if gh auth status >/dev/null 2>&1; then
-  ok "GitHub CLI zaten giriş yapılmış."
+  ok "GitHub CLI is already signed in."
 else
-  info "GitHub girişi gerekiyor. Tarayıcı açılacak, Okta SSO ile giriş yap (MFA dahil)."
+  info "GitHub sign-in required. A browser will open, sign in via Okta SSO (including MFA)."
   # https protokolü: makinede SSH key kurulu/kayıtlı olması şartı yok,
   # gh kendi token'ıyla kimlik doğruluyor (git clone/push dahil).
   # read:packages: GitHub Packages'tan (npm.pkg.github.com) private paket
@@ -152,7 +153,7 @@ else
   # içermez (aşağıdaki read:packages kontrolüne bakınız).
   run_gh_auth_with_reliable_browser_open gh auth login --web --git-protocol https --scopes read:packages
 
-  gh auth status >/dev/null 2>&1 || fail "GitHub girişi tamamlanamadı. Tekrar dene: gh auth login --web --git-protocol https --scopes read:packages"
+  gh auth status >/dev/null 2>&1 || fail "GitHub sign-in did not complete. Try again: gh auth login --web --git-protocol https --scopes read:packages"
 fi
 
 # Daha önce ssh protokolüyle giriş yapılmış olabilir (eski bootstrap
@@ -170,26 +171,26 @@ gh config set -h github.com git_protocol https
 # gözlemlendi). Daha önce (bu scope talep edilmeden) giriş yapılmış olabilir,
 # bu yüzden burada da idempotent şekilde kontrol edip eksikse ekliyoruz.
 if ! gh auth status 2>&1 | grep -q "read:packages"; then
-  info "GitHub Packages (private npm paketleri) için read:packages izni ekleniyor..."
+  info "Adding read:packages permission for GitHub Packages (private npm packages)..."
   run_gh_auth_with_reliable_browser_open gh auth refresh --hostname github.com --scopes read:packages
 fi
 gh auth setup-git >/dev/null 2>&1 || true
 
-# ---- 4) dev-setup-cli'ı clone'la (zaten varsa günceller) -------------------
+# ---- 4) Clone dev-setup-cli (updates it if already present) ---------------
 # SSH anahtarı gerektirmemesi için git+ssh yerine gh'nin kendi (token
 # tabanlı, HTTPS) kimlik doğrulamasıyla clone ediyoruz — makinede GitHub'a
 # kayıtlı bir SSH key olması şart değil.
 if [ -d "$CLONE_DIR/.git" ]; then
-  info "dev-setup-cli zaten $CLONE_DIR altında, güncelleniyor..."
+  info "dev-setup-cli already exists at $CLONE_DIR, updating..."
   git -C "$CLONE_DIR" pull --ff-only
 else
-  info "dev-setup-cli clone'lanıyor -> $CLONE_DIR"
+  info "Cloning dev-setup-cli -> $CLONE_DIR"
   gh repo clone "$GH_REPO" "$CLONE_DIR"
 fi
 
-# ---- 5) npm bağımlılıkları + asıl aracı çalıştır ---------------------------
-info "Bağımlılıklar kuruluyor (npm install)..."
+# ---- 5) Install npm dependencies and run the actual tool -------------------
+info "Installing dependencies (npm install)..."
 (cd "$CLONE_DIR" && npm install --no-audit --no-fund)
 
-ok "Hazırlık tamamlandı, dev-setup-cli'a devrediliyor...\n"
+ok "Setup complete, handing off to dev-setup-cli...\n"
 exec node "$CLONE_DIR/bin/setup.js" "$@"

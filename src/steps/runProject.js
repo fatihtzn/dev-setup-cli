@@ -203,12 +203,12 @@ async function runProject(config, projectDir) {
   if (!detected || !detected.command) {
     if (detected && detected.hints && detected.hints.length) {
       console.log(
-        '\nℹ️  Bu proje için güvenli/otomatik bir başlatma komutu bulunamadı. README.md içinde şu satırlar bulundu, elle çalıştırman gerekebilir:\n'
+        '\nℹ️  No safe/automatic start command found for this project. The following lines were found in README.md, you may need to run them manually:\n'
       );
       detected.hints.forEach((h) => console.log(`  ${h}`));
     } else {
       console.log(
-        '\nℹ️  Bu proje için otomatik başlatma komutu bulunamadı (config override, package.json script ya da README.md üzerinden). README.md dosyasına bakman gerekebilir.'
+        '\nℹ️  No automatic start command found for this project (via config override, package.json script, or README.md). You may need to check README.md.'
       );
     }
     return;
@@ -217,11 +217,11 @@ async function runProject(config, projectDir) {
   const { command, source } = detected;
 
   if (isDryRun()) {
-    console.log(`🧪 [dry-run] Proje başlatılacaktı (${source}): ${command}`);
+    console.log(`🧪 [dry-run] Project would have been started (${source}): ${command}`);
     return;
   }
 
-  console.log(`\n🚀 Proje başlatılıyor (${source}): ${command}`);
+  console.log(`\n🚀 Starting project (${source}): ${command}`);
 
   const logPath = path.join(projectDir, '.dev-setup-run.log');
   const logFd = fs.openSync(logPath, 'w');
@@ -249,27 +249,27 @@ async function runProject(config, projectDir) {
 
   if (!spawnResult.ok) {
     console.log(
-      `⚠️  "${cmd}" komutu çalıştırılamadı (kurulu olmayabilir): ${spawnResult.error.message}`
+      `⚠️  Could not run "${cmd}" (it may not be installed): ${spawnResult.error.message}`
     );
     return;
   }
 
-  console.log(`⏳ Servisin ayağa kalkması bekleniyor (loglar: ${logPath})...`);
+  console.log(`⏳ Waiting for the service to come up (logs: ${logPath})...`);
   const port = await detectPort(config, logPath, preOpenPorts);
 
   if (!port) {
     console.log(
-      `⚠️  Süreç arka planda başlatıldı (PID: ${child.pid}) ama hangi portta dinlediği tespit edilemedi. Logları kontrol et: ${logPath}`
+      `⚠️  Process started in the background (PID: ${child.pid}) but could not detect which port it's listening on. Check the logs: ${logPath}`
     );
     return;
   }
 
   const result = await waitForPort(port, { timeoutMs: 60000 });
   if (result.ok) {
-    console.log(`✅ Proje çalışıyor: http://localhost:${port} (PID: ${child.pid})`);
-    console.log(`   Durdurmak için: kill ${child.pid}   (loglar: ${logPath})`);
+    console.log(`✅ Project is running: http://localhost:${port} (PID: ${child.pid})`);
+    console.log(`   To stop it: kill ${child.pid}   (logs: ${logPath})`);
   } else {
-    console.log(`⚠️  localhost:${port} portuna bağlanılamadı. Süreç PID: ${child.pid}, loglar: ${logPath}`);
+    console.log(`⚠️  Could not connect to localhost:${port}. Process PID: ${child.pid}, logs: ${logPath}`);
   }
 }
 

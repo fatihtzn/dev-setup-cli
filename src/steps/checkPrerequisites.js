@@ -46,7 +46,7 @@ async function startDockerDaemonAndWait(platform, { timeoutMs = 90000, intervalM
     return false;
   }
 
-  process.stdout.write('⏳ Docker Desktop açılıyor, hazır olması bekleniyor');
+  process.stdout.write('⏳ Starting Docker Desktop, waiting for it to be ready');
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     if (isDockerDaemonRunning()) {
@@ -66,12 +66,12 @@ async function attemptAutoFix(tool, platform) {
   }
 
   const cmd = tool.installHint[platform] || tool.installHint.macos;
-  console.log(`\n📦 ${tool.cmd} kuruluyor: ${cmd}`);
+  console.log(`\n📦 Installing ${tool.cmd}: ${cmd}`);
   try {
     run(cmd);
     return commandExists(tool.cmd);
   } catch (err) {
-    console.log(`⚠️  ${tool.cmd} kurulumu başarısız oldu: ${err.message}`);
+    console.log(`⚠️  Failed to install ${tool.cmd}: ${err.message}`);
     return false;
   }
 }
@@ -96,8 +96,8 @@ async function checkPrerequisites(config) {
       cmd: 'docker (daemon)',
       kind: 'start-daemon',
       installHint: {
-        macos: 'Docker Desktop uygulamasını aç (Applications > Docker) ve balina ikonu "running" olana kadar bekle',
-        windows: 'Docker Desktop uygulamasını başlat ve sistem tepsisindeki balina ikonu "running" olana kadar bekle',
+        macos: 'Open the Docker Desktop app (Applications > Docker) and wait until the whale icon shows "running"',
+        windows: 'Start Docker Desktop and wait until the whale icon in the system tray shows "running"',
       },
     });
   }
@@ -108,45 +108,45 @@ async function checkPrerequisites(config) {
     if (!wsl.ok) {
       warnings.push(
         wsl.reason === 'wsl-not-found'
-          ? 'WSL bulunamadı. Docker Desktop\'ın WSL2 backend\'i için WSL kurulu olmalı: "wsl --install" çalıştırıp bilgisayarı yeniden başlat.'
-          : 'WSL2 tabanlı bir dağıtım bulunamadı görünüyor. Docker Desktop ayarlarında "Use the WSL 2 based engine" açık olmalı ve en az bir dağıtım WSL2 kullanmalı ("wsl --set-version <dağıtım> 2").'
+          ? 'WSL not found. Docker Desktop\'s WSL2 backend requires WSL to be installed: run "wsl --install" and restart the computer.'
+          : 'No WSL2-based distro seems to be found. "Use the WSL 2 based engine" must be enabled in Docker Desktop settings and at least one distro must use WSL2 ("wsl --set-version <distro> 2").'
       );
     }
   }
 
   if (missing.length === 0) {
-    console.log('\n✅ Tüm gerekli araçlar zaten kurulu.');
+    console.log('\n✅ All required tools are already installed.');
     if (warnings.length) {
-      console.log('\n⚠️  Uyarılar:\n');
+      console.log('\n⚠️  Warnings:\n');
       warnings.forEach((w) => console.log(`  - ${w}`));
     }
     return { ok: true, warnings };
   }
 
-  console.log('\n⚠️  Eksik araçlar / eksik hazırlık bulundu:\n');
+  console.log('\n⚠️  Missing tools / missing prerequisites found:\n');
   for (const tool of missing) {
     const hint = tool.installHint[platform] || tool.installHint.macos;
     console.log(`  - ${tool.cmd}: ${hint}`);
   }
   if (warnings.length) {
-    console.log('\n⚠️  Uyarılar:\n');
+    console.log('\n⚠️  Warnings:\n');
     warnings.forEach((w) => console.log(`  - ${w}`));
   }
 
   if (isDryRun()) {
-    console.log('\n🧪 [dry-run] Otomatik kurulum/başlatma denenmeyecek.\n');
+    console.log('\n🧪 [dry-run] Automatic install/start will not be attempted.\n');
     return { ok: false, missing, warnings };
   }
 
   const { autoFix } = await prompts({
     type: 'confirm',
     name: 'autoFix',
-    message: 'Eksik olanları şimdi otomatik kurmayı/başlatmayı dene? (İndirme/kurulum süresi alabilir, admin şifresi isteyebilir)',
+    message: 'Try to automatically install/start the missing ones now? (may take a while to download/install, may ask for your admin password)',
     initial: true,
   });
 
   if (!autoFix) {
-    console.log('\nBunları hallettikten sonra script\'i tekrar çalıştır.\n');
+    console.log('\nRe-run the script once you have taken care of these.\n');
     return { ok: false, missing, warnings };
   }
 
@@ -157,16 +157,16 @@ async function checkPrerequisites(config) {
   }
 
   if (stillMissing.length > 0) {
-    console.log('\n⚠️  Şunlar otomatik olarak halledilemedi, elle bakman gerekiyor:\n');
+    console.log('\n⚠️  The following could not be fixed automatically, you need to handle them manually:\n');
     for (const tool of stillMissing) {
       const hint = tool.installHint[platform] || tool.installHint.macos;
       console.log(`  - ${tool.cmd}: ${hint}`);
     }
-    console.log('\nBunları hallettikten sonra script\'i tekrar çalıştır.\n');
+    console.log('\nRe-run the script once you have taken care of these.\n');
     return { ok: false, missing: stillMissing, warnings };
   }
 
-  console.log('\n✅ Eksik olan her şey hallolundu, devam ediliyor.\n');
+  console.log('\n✅ Everything missing has been taken care of, continuing.\n');
   return { ok: true, warnings };
 }
 
