@@ -9,7 +9,7 @@ const { waitForPort } = require('./healthCheck');
 
 function cloneRepo(config, targetDir) {
   if (isDryRun()) {
-    console.log(`🧪 [dry-run] git clone ${config.repo} ${targetDir}`);
+    console.log(`🧪 [dry-run] gh repo clone ${config.repo} ${targetDir}`);
     return;
   }
   if (fs.existsSync(targetDir)) {
@@ -17,9 +17,13 @@ function cloneRepo(config, targetDir) {
     return;
   }
   console.log(`\n📥 Repo klonlanıyor: ${config.repo}`);
-  // execFileSync argümanları shell'e string olarak birleştirmez,
-  // bu yüzden path içinde boşluk olsa bile sorun çıkmaz.
-  execFileSync('git', ['clone', config.repo, targetDir], { stdio: 'inherit' });
+  // Ham "git clone" SSH URL'i (git@github.com:...) gerektirir; makinede
+  // GitHub'a kayıtlı bir SSH key olmayan taze bir kurulumda "Permission
+  // denied (publickey)" ile patlar (gerçek VM testinde gözlemlendi).
+  // "gh repo clone", gh'nin zaten yapılmış https token girişini kullanır —
+  // SSH key şartı yok. execFileSync argümanları shell'e string olarak
+  // birleştirmez, bu yüzden path içinde boşluk olsa bile sorun çıkmaz.
+  execFileSync('gh', ['repo', 'clone', config.repo, targetDir], { stdio: 'inherit' });
 }
 
 function setupEnv(config, projectDir) {
