@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const yaml = require('js-yaml');
-const { run } = require('../platform');
+const { run, commandExists } = require('../platform');
 const { isDryRun } = require('../dryRunState');
 const { injectWith1Password } = require('./secrets');
 const { waitForPort } = require('./healthCheck');
@@ -118,6 +118,21 @@ function detectComposeHostPort(projectDir, composeFile) {
   return null;
 }
 
+// Bir repo yarn.lock/pnpm-lock.yaml ile gelebilir ama o paket yöneticisi
+// makinede hiç kurulu olmayabilir (ör. bootstrap.sh sadece git/node/gh
+// kurar) — gerçek bir VM testinde "yarn: command not found" ile
+// gözlemlendi. Node'la birlikte gelen corepack ekstra global kurulum
+// gerektirmeden yarn/pnpm'i talep anında indirip aktive eder; corepack da
+// yoksa (çok eski Node) npm ile global kuruluma düşülür.
+function ensurePackageManagerAvailable(pm, commands) {
+  if (commandExists(pm)) return;
+  if (commandExists('corepack')) {
+    commands.push('corepack enable');
+  } else {
+    commands.push(`npm install -g ${pm}`);
+  }
+}
+
 // Override config'te bilgi yoksa, klonlanan repoyu inceleyip
 // docker-compose dosyası ve paket yöneticisini otomatik tespit eder.
 function autoDetect(config, projectDir) {
@@ -161,8 +176,10 @@ function autoDetect(config, projectDir) {
     }
 
     if (fs.existsSync(path.join(projectDir, 'pnpm-lock.yaml'))) {
+      ensurePackageManagerAvailable('pnpm', commands);
       commands.push('pnpm install');
     } else if (fs.existsSync(path.join(projectDir, 'yarn.lock'))) {
+      ensurePackageManagerAvailable('yarn', commands);
       commands.push('yarn install');
     } else if (fs.existsSync(path.join(projectDir, 'package.json'))) {
       commands.push('npm install');
