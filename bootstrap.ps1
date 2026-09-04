@@ -19,7 +19,7 @@
 $ErrorActionPreference = "Stop"
 
 # ---- Ayarlanabilir tek deger: aracin gercek reposu ------------------------
-$RepoUrl  = "git@github.com:fatihtzn/dev-setup-cli.git"
+$GhRepo   = "fatihtzn/dev-setup-cli"
 $CloneDir = Join-Path $HOME "dev-setup-cli"
 # ----------------------------------------------------------------------------
 
@@ -87,16 +87,35 @@ if ($ghAuthOk) {
     Write-Ok "GitHub CLI is already signed in."
 } else {
     Write-Info "GitHub sign-in required. A browser will open, sign in via Okta SSO (including MFA)."
-    gh auth login --web --git-protocol ssh
+    # https protokolü: makinede SSH key kurulu/kayıtlı olması şartı yok, gh
+    # kendi token'ıyla kimlik doğruluyor (git clone/push dahil) — macOS'taki
+    # bootstrap.sh'de "Permission denied (publickey)" ile bulunan aynı sorunun
+    # Windows tarafı. read:packages: GitHub Packages'tan (npm.pkg.github.com)
+    # private paket çekebilmek için gerekli, gh'nin varsayılan minimum scope
+    # seti bunu içermez.
+    gh auth login --web --git-protocol https --scopes read:packages
 }
 
+# Daha önce ssh protokolüyle ya da read:packages olmadan giriş yapılmış
+# olabilir — burada da idempotent şekilde düzeltiyoruz. gh, host bazlı
+# protokolü ayrıca tutar ve genel config'i ezer, ikisini de set ediyoruz.
+gh config set git_protocol https
+gh config set -h github.com git_protocol https
+if (-not ((gh auth status 2>&1 | Out-String) -match "read:packages")) {
+    Write-Info "Adding read:packages permission for GitHub Packages (private npm packages)..."
+    gh auth refresh --hostname github.com --scopes read:packages
+}
+gh auth setup-git *> $null
+
 # ---- 4) Clone dev-setup-cli (updates it if already present) ---------------
+# SSH anahtarı gerektirmemesi için git+ssh yerine gh'nin kendi (token
+# tabanlı, HTTPS) kimlik doğrulamasıyla clone ediyoruz.
 if (Test-Path (Join-Path $CloneDir ".git")) {
     Write-Info "dev-setup-cli already exists at $CloneDir, updating..."
     git -C $CloneDir pull --ff-only
 } else {
     Write-Info "Cloning dev-setup-cli -> $CloneDir"
-    git clone $RepoUrl $CloneDir
+    gh repo clone $GhRepo $CloneDir
 }
 
 # ---- 5) Install npm dependencies and run the actual tool -------------------
