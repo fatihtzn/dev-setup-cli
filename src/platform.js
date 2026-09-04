@@ -87,6 +87,8 @@ function detectRequiredNodeVersion(projectDir) {
 
 // nvm-windows tamamen farklı bir araç (.nvmrc'yi aynı şekilde okumaz), bu
 // yüzden şimdilik sadece macOS/Linux'ta (POSIX nvm.sh) destekleniyor.
+const NVM_INSTALL_VERSION = 'v0.40.7';
+
 function getNvmCommandPrefix(projectDir) {
   if (getPlatform() === 'windows') return '';
 
@@ -95,13 +97,23 @@ function getNvmCommandPrefix(projectDir) {
 
   const nvmDir = process.env.NVM_DIR || path.join(os.homedir(), '.nvm');
   const nvmScript = path.join(nvmDir, 'nvm.sh');
-  if (!fs.existsSync(nvmScript)) return '';
+
+  // bootstrap.sh/.ps1 sadece git/node/gh kurar, nvm'i HİÇ kurmaz — bu
+  // yüzden bizim tool'umuzla (brew/winget ile) kurulmuş taze bir makinede
+  // nvm.sh bulunamıyor, bu fonksiyon sessizce boş dönüyor ve .nvmrc fiilen
+  // yok sayılıyor gibi görünüyordu (gerçek bir Airalo projesinde/VM'de
+  // gözlemlendi — .nvmrc pinlenmiş sürüm hiç devreye girmedi çünkü nvm hiç
+  // kurulu değildi). nvm kurulu değilse, komutun kendisi (çalıştığı
+  // makinede) resmi kurulum script'iyle önce nvm'i kurar.
+  const installNvmCmd = fs.existsSync(nvmScript)
+    ? ''
+    : `curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_INSTALL_VERSION}/install.sh" | bash >/dev/null 2>&1; `;
 
   // nvm install çıktısı bilerek gizlenmiyor (ilk kurulumda indirme
   // ilerlemesi gösterir); ";" ile devam ediyoruz ki nvm install her
   // nedenle başarısız olursa bile asıl komut (elimizdeki Node ile) yine de
   // denensin — sessizce tıkanmak yerine.
-  return `. "${nvmScript}" >/dev/null 2>&1 && nvm install; `;
+  return `${installNvmCmd}. "${nvmScript}" >/dev/null 2>&1 && nvm install; `;
 }
 
 // `docker` komutunun PATH'te olması, Docker Desktop'ın gerçekten AÇIK olduğu
