@@ -37,12 +37,29 @@ clone the tool itself → hand off to `node bin/setup.js`.
 > instead of your normal user and become invisible from your own terminal.
 > brew/gh will already ask for your password themselves when they actually
 > need it — run the script as a plain user.
+>
+> ⚠️ **If you just pushed a fix and immediately re-run one of the commands
+> above and still hit the old error, it's very likely a stale CDN cache** —
+> `raw.githubusercontent.com` can serve an outdated copy of the script for a
+> few minutes after a push, on some edge servers, even though the fix is
+> already live. Append a random query string to force a fresh fetch instead
+> of waiting it out:
+> ```bash
+> bash <(curl -fsSL "https://raw.githubusercontent.com/fatihtzn/dev-setup-cli/main/bootstrap.sh?$RANDOM")
+> ```
+> ```powershell
+> irm "https://raw.githubusercontent.com/fatihtzn/dev-setup-cli/main/bootstrap.ps1?$(Get-Random)" | iex
+> ```
 
-**Verification status:** `bootstrap.sh` has been tested end-to-end both on
-macOS and on a real VM (including Homebrew install, PATH persistence, gh
-HTTPS sign-in). `bootstrap.ps1` has **not been tested on a real Windows
-machine yet** since this machine is macOS — it was written logically, so be
-careful on first use and report any issues you find.
+**Verification status:** both `bootstrap.sh` and `bootstrap.ps1` have now
+been tested end-to-end on real machines (macOS natively and in a VM;
+Windows in a VM) — including Homebrew/winget install, PATH persistence, gh
+HTTPS sign-in with `read:packages`, and a real project clone/setup/run.
+Known gotchas already fixed based on those real runs: winget picking the
+wrong source and failing on a cert error (fixed by pinning `--source
+winget`), the default PowerShell execution policy blocking npm's `npm.ps1`
+wrapper (fixed with a process-scoped `Set-ExecutionPolicy` at the top of
+`bootstrap.ps1`), and the stale-CDN-cache issue noted above.
 
 ### If git/node/gh are already installed
 ```bash
