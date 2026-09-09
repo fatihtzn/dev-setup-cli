@@ -1,14 +1,25 @@
-node_modules/
 .DS_Store
 Archive.zip
 *.zip
-
-# Bu araç repo'ları test/kurulum için klonlar — kendi kaynak kodumuzla asla
-# karışmamalı.
-airalo-partner-backend/
-airalo-partner-panel-frontend/
-web-app/
 *.dev-setup-run.log
 .env
 .env.local
 .env.*.local
+
+# Bu araç config/projects.json'da (veya GitHub'dan otomatik çekilen listede)
+# TANIMLI HERHANGİ BİR repoyu klonlayabilir — isim sabit değil. Önceden bu
+# dizinler tek tek isimle (airalo-partner-backend/ vb.) ignore edilmişti;
+# yeni bir proje eklendiğinde ya da tool başka bir repo adıyla test için
+# kullanıldığında (gerçekte olduğu gibi: "ux-frontend-v1.5/" hiçbir zaman
+# buraya eklenmemişti ve git tarafından tamamen İZLENEBİLİR/commit'lenebilir
+# durumdaydı) kolayca unutuluyor ve o repo'nun TÜM kaynak kodu/secret'ları
+# yanlışlıkla bu tool'un kendi (private) repo geçmişine karışabilirdi.
+# Bunun yerine kök dizindeki HER klasörü varsayılan olarak ignore edip,
+# sadece tool'un kendi kaynak kodunu (src/, bin/, config/) ve node_modules
+# dışındaki bağımlılık kilit dosyalarını istisna tutuyoruz — böylece yeni
+# klonlanan/test edilen hiçbir proje ASLA bu repo'ya girmiyor, .gitignore'u
+# güncellemeyi unutmaya gerek kalmıyor.
+/*/
+!/src/
+!/bin/
+!/config/
