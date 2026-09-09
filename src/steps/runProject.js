@@ -3,7 +3,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { isDryRun } = require('../dryRunState');
 const { waitForPort } = require('./healthCheck');
-const { getNvmCommandPrefix } = require('../platform');
+const { getNvmCommandPrefix, getPlatform } = require('../platform');
 
 // Dev server loglarında portu yakalamak için denenen kalıplar (Vite, Next.js,
 // CRA, Vue CLI, Express/Nest gibi araçların tipik çıktılarını kapsar).
@@ -147,6 +147,22 @@ function detectRunCommand(config, projectDir) {
   return null;
 }
 
+// child.pid, spawn ettiğimiz İLK süreç (bash ya da doğrudan yarn/corepack) —
+// gerçek dev server ise (vite/webpack-dev-server, nodemon vb.) neredeyse hep
+// bunun bir alt/torun süreci oluyor (corepack -> yarn -> vite gibi zincirler,
+// ya da nvm-prefix'li "bash -c '...; nvm install; komut'" zinciri). detached:
+// true kullandığımız için POSIX'te bu üst süreç kendi process group'unun
+// lideri oluyor (pgid === pid); düz "kill PID" SADECE o tek üst süreci
+// öldürüyor, port'u gerçekten tutan alt süreç hayatta kalıyor ve "kill
+// çalışmıyor" gibi görünüyor (gerçek kullanıcı raporunda gözlemlendi).
+// Negatif PID ile kill, tüm process group'u (üst süreç + tüm alt/torun
+// süreçleri) öldürür. Windows'ta "kill" native bir komut değil ve shell:
+// true nedeniyle PID bir cmd.exe sarmalayıcısına ait olduğundan, "/T" (alt
+// ağaç dahil) ve "/F" (zorla) ile taskkill kullanılıyor.
+function getStopCommand(pid) {
+  return getPlatform() === 'windows' ? `taskkill /PID ${pid} /T /F` : `kill -- -${pid}`;
+}
+
 function sniffPortFromLog(logPath) {
   if (!fs.existsSync(logPath)) return null;
   const content = fs.readFileSync(logPath, 'utf-8');
@@ -275,15 +291,17 @@ async function runProject(config, projectDir) {
     console.log(
       `⚠️  Process started in the background (PID: ${child.pid}) but could not detect which port it's listening on. Check the logs: ${logPath}`
     );
+    console.log(`   To stop it: ${getStopCommand(child.pid)}`);
     return;
   }
 
   const result = await waitForPort(port, { timeoutMs: 60000 });
   if (result.ok) {
     console.log(`✅ Project is running: http://localhost:${port} (PID: ${child.pid})`);
-    console.log(`   To stop it: kill ${child.pid}   (logs: ${logPath})`);
+    console.log(`   To stop it: ${getStopCommand(child.pid)}   (logs: ${logPath})`);
   } else {
     console.log(`⚠️  Could not connect to localhost:${port}. Process PID: ${child.pid}, logs: ${logPath}`);
+    console.log(`   To stop it: ${getStopCommand(child.pid)}`);
   }
 }
 
