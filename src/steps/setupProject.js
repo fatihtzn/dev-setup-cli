@@ -17,12 +17,12 @@ function cloneRepo(config, targetDir) {
     return;
   }
   console.log(`\n📥 Cloning repo: ${config.repo}`);
-  // Ham "git clone" SSH URL'i (git@github.com:...) gerektirir; makinede
-  // GitHub'a kayıtlı bir SSH key olmayan taze bir kurulumda "Permission
-  // denied (publickey)" ile patlar (gerçek VM testinde gözlemlendi).
-  // "gh repo clone", gh'nin zaten yapılmış https token girişini kullanır —
-  // SSH key şartı yok. execFileSync argümanları shell'e string olarak
-  // birleştirmez, bu yüzden path içinde boşluk olsa bile sorun çıkmaz.
+  // A raw "git clone" SSH URL (git@github.com:...) requires an SSH key; on
+  // a fresh setup with no SSH key registered on GitHub, it blows up with
+  // "Permission denied (publickey)" (observed in a real VM test).
+  // "gh repo clone" uses gh's own already-completed https token sign-in —
+  // no SSH key requirement. execFileSync doesn't concatenate arguments into
+  // a shell string, so spaces in the path aren't a problem either.
   execFileSync('gh', ['repo', 'clone', config.repo, targetDir], { stdio: 'inherit' });
 }
 
@@ -35,8 +35,8 @@ function setupEnv(config, projectDir) {
     return;
   }
 
-  // Dry-run'da repo gerçekten klonlanmadığı için .env.example diskte yok;
-  // akışı yine de gösterebilmek adına varmış gibi devam ederiz.
+  // In dry-run the repo isn't actually cloned, so .env.example doesn't
+  // exist on disk; we proceed as if it did, so the flow can still be shown.
   const exampleExists = isDryRun() || fs.existsSync(examplePath);
   if (!exampleExists) {
     console.log('⚠️  .env.example not found, .env needs to be created manually.');
@@ -58,11 +58,11 @@ function setupEnv(config, projectDir) {
   console.log('✅ .env created from .env.example. Remember to fill in the real values.');
 }
 
-// Bir postCloneCommand (örn. composer install) reponun kendi yapılandırma
-// sorunu yüzünden başarısız olabilir. Tek bir komutun başarısız olması geri
-// kalan her şeyi (diğer postCloneCommands'lar, .env zaten yapıldıysa docker/
-// runProject adımları) durdurmamalı — amaç, dış müdahale olmadan script'in
-// mümkün olduğunca ileri gitmesi. Başarısız komutlar uyarı olarak listelenir.
+// A postCloneCommand (e.g. composer install) can fail because of the repo's
+// own configuration problem. One command failing shouldn't stop everything
+// else (other postCloneCommands, or the docker/runProject steps if .env is
+// already done) — the goal is for the script to get as far as possible
+// without outside intervention. Failed commands are listed as warnings.
 function runPostCloneCommands(config, projectDir) {
   const failed = [];
   for (const cmd of config.postCloneCommands || []) {
@@ -81,17 +81,17 @@ function runPostCloneCommands(config, projectDir) {
   return { failed };
 }
 
-// docker-compose dosyasındaki ilk yayınlanmış (published) host portunu okur,
-// böylece "servis ayağa kalktı mı?" health-check'i hangi portu deneyeceğini bilir.
-// "3000:3000", "127.0.0.1:3000:3000" ve uzun format ({ published: 3000 }) desteklenir.
+// Reads the first published host port in the docker-compose file, so the
+// "is the service up?" health-check knows which port to try.
+// "3000:3000", "127.0.0.1:3000:3000", and the long format ({ published: 3000 }) are supported.
 //
-// `profiles` alanı olan servisler ATLANIR: bizim çalıştırdığımız düz
-// `docker compose up -d` hiçbir profil seçmez, bu yüzden profiles: ["app"]
-// gibi bir profil arkasındaki servis o komutla hiç başlamaz — böyle bir
-// servisin portunu health-check hedefi seçmek, aslında ayağa kalkmayan bir
-// uygulamayı "hazır" gibi yanlış raporlamaya yol açar (gerçek bir Airalo
-// reposunda gözlemlendi: backend/frontend `app` profiline gizliydi, sadece
-// `make prod-local` ile başlıyordu).
+// Services with a `profiles` field are SKIPPED: the plain `docker compose
+// up -d` we run doesn't select any profile, so a service behind a profile
+// like profiles: ["app"] never starts with that command — picking such a
+// service's port as the health-check target would wrongly report an app
+// that never actually came up as "ready" (observed on a real Airalo repo:
+// backend/frontend was hidden behind the `app` profile, only started via
+// `make prod-local`).
 function detectComposeHostPort(projectDir, composeFile) {
   if (!composeFile) return null;
   try {
@@ -113,38 +113,40 @@ function detectComposeHostPort(projectDir, composeFile) {
       }
     }
   } catch {
-    // docker-compose.yml okunamadı/parse edilemedi, sessizce vazgeç — health-check atlanır.
+    // docker-compose.yml couldn't be read/parsed, silently give up — the health-check is skipped.
   }
   return null;
 }
 
-// Bir repo yarn.lock/pnpm-lock.yaml ile gelebilir ama o paket yöneticisi
-// makinede hiç kurulu olmayabilir (ör. bootstrap.sh sadece git/node/gh
-// kurar) — gerçek bir VM testinde "yarn: command not found" ile
-// gözlemlendi. Node'un içinde gelmesi beklenen corepack, bazı dağıtımlarda
-// (ör. Homebrew'ın node formülü) hiç bulunmuyor; "npm install -g yarn" gibi
-// bir fallback ise projenin package.json'ında pinlenmiş sürümü (ör.
-// "packageManager": "yarn@4.13.0") yok sayan klasik/genel bir yarn kurar ve
-// "Corepack must be enabled" hatasıyla patlar (gerçek VM testinde
-// gözlemlendi). Bu yüzden PATH'teki "yarn"/"pnpm" komutuna hiç güvenmiyoruz —
-// corepack yoksa npm ile kuruyoruz, kurulum komutunu da her zaman
-// "corepack <pm> install" olarak çalıştırıyoruz; bu, PATH'te ne olursa olsun
-// projenin pinlenmiş sürümünü doğru şekilde indirip kullanır.
+// A repo may come with yarn.lock/pnpm-lock.yaml but that package manager
+// might not be installed on the machine at all (e.g. bootstrap.sh only
+// installs git/node/gh) — observed on a real VM test as "yarn: command not
+// found". corepack, which is supposed to ship inside Node, is missing
+// entirely on some distributions (e.g. Homebrew's node formula); a fallback
+// like "npm install -g yarn" installs a generic/classic yarn that ignores
+// the version pinned in the project's package.json (e.g. "packageManager":
+// "yarn@4.13.0") and blows up with a "Corepack must be enabled" error
+// (observed on a real VM test). That's why we never trust the "yarn"/"pnpm"
+// command on PATH — if corepack is missing we install it via npm, and
+// always run the install command as "corepack <pm> install"; this
+// correctly downloads and uses the project's pinned version regardless of
+// what's on PATH.
 function ensureCorepackAvailable(commands) {
   if (!commandExists('corepack')) {
-    // corepack paketi kendi "yarn"/"pnpm" bin'lerini de kurmaya çalışır;
-    // makinede (ör. bu aracın önceki, düzeltilmemiş bir sürümünden veya
-    // başka bir yerden) npm ile kurulmuş çıplak bir global yarn/pnpm varsa,
-    // npm o dosyaların üzerine yazmayı reddedip "EEXIST: file already
-    // exists" ile patlar (gerçek VM testinde gözlemlendi). Önce onları
-    // temizliyoruz; yoklarsa uninstall zaten sessizce no-op olur.
+    // The corepack package also tries to install its own "yarn"/"pnpm"
+    // bins; if the machine already has a bare global yarn/pnpm installed
+    // via npm (e.g. from a previous, unfixed version of this tool, or from
+    // somewhere else), npm refuses to overwrite those files and blows up
+    // with "EEXIST: file already exists" (observed on a real VM test). We
+    // remove them first; if they don't exist, uninstall is already a
+    // silent no-op.
     commands.push('npm uninstall -g yarn pnpm >/dev/null 2>&1 || true');
     commands.push('npm install -g corepack');
   }
 }
 
-// Override config'te bilgi yoksa, klonlanan repoyu inceleyip
-// docker-compose dosyası ve paket yöneticisini otomatik tespit eder.
+// If the override config has no info, inspects the cloned repo and
+// auto-detects the docker-compose file and package manager.
 function autoDetect(config, projectDir) {
   const detected = { ...config };
 
@@ -163,12 +165,12 @@ function autoDetect(config, projectDir) {
     detected.requiresDocker = Boolean(found);
     detected.dockerComposeFile = found;
   } else if (detected.requiresDocker && detected.dockerComposeFile === undefined) {
-    // requiresDocker override'da açıkça true verilmiş ama dockerComposeFile
-    // belirtilmemiş — yukarıdaki dal hiç çalışmadığı için dosya adı hâlâ
-    // bilinmiyor. Aramayı burada da yapmazsak detectComposeHostPort composeFile
-    // olmadan çağrılır ve health-check sessizce atlanır (gerçek bir Airalo
-    // reposunda, requiresDocker:true override'ı olan ama dockerComposeFile
-    // vermeyen bir projede gözlemlendi).
+    // requiresDocker was explicitly set to true in the override but
+    // dockerComposeFile wasn't given — since the branch above never ran,
+    // the filename is still unknown. If we don't also search here,
+    // detectComposeHostPort gets called without a composeFile and the
+    // health-check is silently skipped (observed on a real Airalo repo that
+    // had a requiresDocker:true override but no dockerComposeFile).
     detected.dockerComposeFile = composeCandidates.find((f) => fs.existsSync(path.join(projectDir, f)));
   }
 
@@ -176,8 +178,8 @@ function autoDetect(config, projectDir) {
     detected.healthCheckPort = detectComposeHostPort(projectDir, detected.dockerComposeFile);
   }
 
-  // Bir repo hem composer.json (PHP/Laravel) hem package.json (örn. gömülü bir
-  // frontend) içerebilir; ikisi de varsa ikisinin de install komutu eklenir.
+  // A repo can have both composer.json (PHP/Laravel) and package.json (e.g.
+  // an embedded frontend); if both exist, the install command for both is added.
   if (!detected.postCloneCommands) {
     const commands = [];
 
@@ -185,20 +187,21 @@ function autoDetect(config, projectDir) {
       commands.push('composer install');
     }
 
-    // Bazı Airalo JS repoları paket.json bağımlılıklarını GitHub Packages'tan
-    // (npm.pkg.github.com) çeker; bu private scope'lar kimlik doğrulama
-    // ister. actions/setup-node'un yaygınlaştırdığı NODE_AUTH_TOKEN
-    // konvansiyonu (.yarnrc.yml'de "npmAuthToken: ${NODE_AUTH_TOKEN}" gibi)
-    // gerçek bir Airalo reposunda (airalo-partner-panel-frontend) gözlemlendi
-    // — anonim istek "Invalid authentication" ile patlıyordu. gh zaten giriş
-    // yapılmış olduğundan token'ı oradan sağlıyoruz; repo bu değişkeni hiç
-    // kullanmıyorsa zararsız, kullanıyorsa otomatik doğru çalışır.
+    // Some Airalo JS repos pull package.json dependencies from GitHub
+    // Packages (npm.pkg.github.com); these private scopes require
+    // authentication. The NODE_AUTH_TOKEN convention popularized by
+    // actions/setup-node (e.g. "npmAuthToken: ${NODE_AUTH_TOKEN}" in
+    // .yarnrc.yml) was observed on a real Airalo repo
+    // (airalo-partner-panel-frontend) — an anonymous request blew up with
+    // "Invalid authentication". Since gh is already signed in, we supply
+    // the token from there; harmless if the repo never uses this variable,
+    // and works automatically if it does.
     const NODE_AUTH_TOKEN_PREFIX = 'NODE_AUTH_TOKEN="$(gh auth token 2>/dev/null)" ';
-    // Repo, o an aktif olan global Node sürümünden farklı bir sürüm
-    // isteyebilir (.nvmrc / engines.node) — bkz. getNvmCommandPrefix yorumu.
-    // Yanlış sürümle kurulan native (derlenen) bağımlılıklar sessizce
-    // bozuk kurulur, bu yüzden install komutundan ÖNCE (NODE_AUTH_TOKEN'dan
-    // da önce) doğru sürüme geçiyoruz.
+    // The repo may require a version different from the currently active
+    // global Node version (.nvmrc / engines.node) — see the
+    // getNvmCommandPrefix comment. Native (compiled) dependencies installed
+    // with the wrong version get silently built broken, so we switch to the
+    // right version BEFORE the install command (and before NODE_AUTH_TOKEN too).
     const nvmPrefix = getNvmCommandPrefix(projectDir);
 
     if (fs.existsSync(path.join(projectDir, 'pnpm-lock.yaml'))) {
@@ -233,10 +236,11 @@ async function dockerUp(config, projectDir) {
   try {
     run(`docker compose -f ${composeFile} up -d`, { cwd: projectDir });
   } catch (err) {
-    // Port çakışması (örn. başka bir projeden kalma container), image build
-    // hatası vb. nedenlerle başarısız olabilir — gerçek docker hatası zaten
-    // stdio:'inherit' ile ekranda görünür. Burada yakalamazsak script tüm
-    // kalan adımları (kapanış mesajı dahil) durdurup üst seviye hatayla çöker.
+    // Can fail because of a port conflict (e.g. a leftover container from
+    // another project), an image build error, etc. — the real docker error
+    // is already visible on screen via stdio:'inherit'. If we don't catch
+    // it here, the script stops all remaining steps (including the closing
+    // message) and crashes with a top-level error.
     console.log(`⚠️  docker compose up failed: ${err.message}`);
     console.log(`   Check the containers: docker compose -f ${composeFile} ps`);
     return { ok: false };
@@ -258,8 +262,8 @@ async function dockerUp(config, projectDir) {
       `⚠️  Could not connect to localhost:${config.healthCheckPort} after waiting ${Math.round(result.elapsedMs / 1000)}s. Check whether the container is up: docker compose -f ${composeFile} logs`
     );
   }
-  // "up -d" komutu başarılı olduğu için ok:true — health-check timeout'u ayrı,
-  // daha yumuşak bir uyarı olarak yukarıda zaten gösterildi.
+  // ok:true because the "up -d" command succeeded — a health-check timeout
+  // is a separate, softer warning already shown above.
   return { ok: true };
 }
 

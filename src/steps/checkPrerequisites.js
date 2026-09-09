@@ -10,8 +10,8 @@ const {
 } = require('../platform');
 const { isDryRun } = require('../dryRunState');
 
-// installHint aynı zamanda GERÇEK, çalıştırılabilir kurulum komutu — otomatik
-// kurulum onaylanırsa doğrudan bu string execSync ile çalıştırılır.
+// installHint is also the REAL, executable install command — if automatic
+// install is confirmed, this exact string is run directly via execSync.
 const REQUIRED_TOOLS = [
   {
     cmd: 'git',
@@ -35,17 +35,18 @@ const REQUIRED_TOOLS = [
   },
 ];
 
-// Docker Desktop kurulu ama kapalıysa "aç ve bekle" ile hallolur — bu, "kur"
-// ile aynı şey değil (sisteme hiçbir şey yüklemez, sadece zaten kurulu bir
-// uygulamayı başlatır), bu yüzden ayrı bir "start-daemon" türü var.
+// If Docker Desktop is installed but not running, "open and wait" handles
+// it — this is not the same as "install" (it doesn't put anything on the
+// system, it just starts an already-installed app), hence the separate
+// "start-daemon" kind.
 async function startDockerDaemonAndWait(platform, { timeoutMs = 90000, intervalMs = 3000 } = {}) {
   try {
     if (platform === 'macos') {
       run('open -a Docker', { stdio: 'ignore' });
     } else if (platform === 'windows') {
-      // Docker Desktop'ın varsayılan kurulum yolu — farklı bir yere kurulmuşsa
-      // bu başarısız olur ve elle açma talimatına düşülür (untested: gerçek
-      // bir Windows makinesinde henüz doğrulanmadı).
+      // Docker Desktop's default install path — if it's installed somewhere
+      // else, this fails and falls back to the manual-open instructions
+      // (untested: not yet verified on a real Windows machine).
       run('start "" "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe"', { stdio: 'ignore' });
     } else {
       return false;
@@ -98,9 +99,9 @@ async function checkPrerequisites(config) {
     }
   }
 
-  // docker CLI PATH'te olsa bile Docker Desktop kapalıysa her docker komutu
-  // (docker compose up dahil) başarısız olur — bunu burada yakalamazsak script
-  // ilerideki bir adımda ham, anlaşılmaz bir hata ile çöker.
+  // Even if the docker CLI is on PATH, if Docker Desktop is off, every docker
+  // command (including docker compose up) fails — if we don't catch this
+  // here, the script crashes later with a raw, cryptic error.
   const dockerBinaryMissing = missing.some((t) => t.cmd === 'docker');
   if (config.requiresDocker && !dockerBinaryMissing && !isDockerDaemonRunning()) {
     missing.push({
@@ -113,13 +114,14 @@ async function checkPrerequisites(config) {
     });
   }
 
-  // "docker" CLI kurulu ve daemon çalışıyor olsa bile "docker compose" ayrı
-  // bir CLI plugin olarak çözülür ve sadece belirli dizinlerde aranır.
-  // Homebrew'ın macOS docker-desktop cask'ı gerçek plugin'e işaret eden
-  // symlink'i Docker CLI'ın hiç bakmadığı bir dizine (/usr/local/cli-plugins/)
-  // koyabiliyor — "docker: unknown command: docker compose" hatasıyla
-  // gerçek bir macOS VM'de gözlemlendi (daemon çalışıyorken bile). Bu kontrol
-  // daemon'dan bağımsız (compose version daemon gerektirmez).
+  // Even if the "docker" CLI is installed and the daemon is running,
+  // "docker compose" resolves as a separate CLI plugin that's only searched
+  // for in certain directories. Homebrew's macOS docker-desktop cask can put
+  // the symlink pointing at the real plugin into a directory the Docker CLI
+  // never looks at (/usr/local/cli-plugins/) — observed on a real macOS VM
+  // as a "docker: unknown command: docker compose" error (even with the
+  // daemon running). This check is independent of the daemon (compose
+  // version doesn't require it).
   if (config.requiresDocker && !dockerBinaryMissing && !isDockerComposeAvailable()) {
     missing.push({
       cmd: 'docker compose (plugin)',

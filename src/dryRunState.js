@@ -1,5 +1,5 @@
-// Süreç boyunca tek bir yerden okunan basit dry-run bayrağı.
-// bin/setup.js --dry-run ile set eder, diğer modüller isDryRun() ile okur.
+// Simple dry-run flag read from a single place throughout the process.
+// bin/setup.js sets it via --dry-run, other modules read it via isDryRun().
 let dryRun = false;
 
 function setDryRun(value) {

@@ -15,11 +15,11 @@ function isOpSignedIn() {
   }
 }
 
-// .env.example içindeki op://vault/item/field referanslarını 1Password'daki
-// gerçek değerlerle doldurup .env dosyasına yazar (bkz. `op inject`).
-// Kullanıcının 1Password CLI'ı kurulu ve giriş yapmış olması gerekir; secret
-// değerleri hiçbir zaman bu script'in belleğine/stdout'una düşmez, doğrudan
-// op CLI tarafından dosyaya yazılır.
+// Fills in op://vault/item/field references inside .env.example with the
+// real values from 1Password and writes them to the .env file (see `op
+// inject`). The user's 1Password CLI must be installed and signed in;
+// secret values never touch this script's memory/stdout, they're written
+// to the file directly by the op CLI.
 function injectWith1Password(examplePath, envPath) {
   if (isDryRun()) {
     console.log(`🧪 [dry-run] op inject -i ${examplePath} -o ${envPath} would have been run.`);

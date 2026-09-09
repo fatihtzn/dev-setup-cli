@@ -21,16 +21,16 @@ function commandExists(cmd) {
   }
 }
 
-// Bu araç kendi ürettiği (postCloneCommands, docker compose komutları vb.)
-// komutları hep POSIX/bash söz dizimiyle yazıyor (`$(...)`, `>/dev/null
-// 2>&1`, `VAR="değer" komut`, `until ... do ... done` gibi) — Windows'ta
-// execSync varsayılan olarak cmd.exe kullanır ve cmd.exe bu söz dizimini
-// hiç anlamaz ("'NODE_AUTH_TOKEN' is not recognized..." gibi hatalarla
-// gerçek bir Windows VM'de gözlemlendi). Git for Windows zaten zorunlu bir
-// bağımlılığımız (REQUIRED_TOOLS) ve kendi gerçek POSIX bash'ini
-// (bash.exe/MSYS2) getiriyor — Windows'ta tüm bu komutları cmd.exe yerine
-// o bash'e yönlendirerek, komutları hiç değiştirmeden macOS'takiyle birebir
-// aynı şekilde çalıştırabiliyoruz.
+// The commands this tool generates itself (postCloneCommands, docker
+// compose commands etc.) are always written in POSIX/bash syntax (`$(...)`,
+// `>/dev/null 2>&1`, `VAR="value" command`, `until ... do ... done` etc.) —
+// on Windows, execSync uses cmd.exe by default, and cmd.exe doesn't
+// understand this syntax at all (observed on a real Windows VM, with errors
+// like "'NODE_AUTH_TOKEN' is not recognized..."). Git for Windows is already
+// a required dependency of ours (REQUIRED_TOOLS) and brings its own real
+// POSIX bash (bash.exe/MSYS2) — by routing all these commands through that
+// bash instead of cmd.exe on Windows, we can run them identically to macOS
+// without changing the commands at all.
 function findWindowsBash() {
   const candidates = [
     'C:\\Program Files\\Git\\bin\\bash.exe',
@@ -46,25 +46,26 @@ function run(cmd, options = {}) {
   if (getPlatform() === 'windows') {
     const bash = findWindowsBash();
     if (bash) {
-      // execFileSync (execSync değil): cmd tek bir argüman olarak bash'e
-      // geçer, cmd.exe hiç devreye girmez, bu yüzden tırnak/özel karakter
-      // kaçışına gerek kalmaz — bash kendi POSIX parser'ıyla ayrıştırır.
+      // execFileSync (not execSync): cmd is passed to bash as a single
+      // argument, cmd.exe never gets involved, so there's no need to escape
+      // quotes/special characters — bash parses it with its own POSIX parser.
       return execFileSync(bash, ['-c', cmd], { stdio: 'inherit', ...options });
     }
   }
   return execSync(cmd, { stdio: 'inherit', ...options });
 }
 
-// Bir repo, o an aktif olan global Node sürümünden FARKLI bir sürüm
-// isteyebilir (.nvmrc ya da package.json'daki "engines.node"). Bu fark
-// gözden kaçarsa, native (derlenen, ör. isolated-vm gibi) bağımlılıklar
-// YANLIŞ Node sürümünün header'larına karşı derlenip kurulum/çalıştırma
-// anında "exit code 1" gibi anlaşılmaz hatalarla patlayabiliyor — gerçek
-// bir projede (ux-frontend-v1.5, .nvmrc "v22.20" istiyordu ama aktif Node
-// v26.8.1'di) gözlemlendi. detectRequiredNodeVersion bunu tespit eder,
-// getNvmCommandPrefix ise nvm kuruluysa doğru sürümü (yoksa nvm ile
-// indirip) devreye alan bir bash komut öneki üretir — bu önek, kurulum ve
-// çalıştırma komutlarının ÖNÜNE eklenerek aynı shell içinde geçerli olur.
+// A repo may require a Node version DIFFERENT from the currently active
+// global one (.nvmrc, or "engines.node" in package.json). If this mismatch
+// goes unnoticed, native (compiled, e.g. isolated-vm-like) dependencies get
+// built against the WRONG Node version's headers and blow up at
+// install/run time with cryptic errors like "exit code 1" — observed in a
+// real project (ux-frontend-v1.5, .nvmrc asked for "v22.20" but the active
+// Node was v26.8.1). detectRequiredNodeVersion detects this, and
+// getNvmCommandPrefix produces a bash command prefix that switches to the
+// right version via nvm if installed (downloading it via nvm otherwise) —
+// this prefix is prepended to install/run commands so it takes effect
+// within the same shell.
 function detectRequiredNodeVersion(projectDir) {
   const nvmrcPath = path.join(projectDir, '.nvmrc');
   if (fs.existsSync(nvmrcPath)) {
@@ -78,15 +79,15 @@ function detectRequiredNodeVersion(projectDir) {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
       if (pkg.engines && pkg.engines.node) return pkg.engines.node;
     } catch {
-      // package.json okunamadı/parse edilemedi, sessizce vazgeç
+      // package.json couldn't be read/parsed, silently give up
     }
   }
 
   return null;
 }
 
-// nvm-windows tamamen farklı bir araç (.nvmrc'yi aynı şekilde okumaz), bu
-// yüzden şimdilik sadece macOS/Linux'ta (POSIX nvm.sh) destekleniyor.
+// nvm-windows is a completely different tool (doesn't read .nvmrc the same
+// way), so for now this is only supported on macOS/Linux (POSIX nvm.sh).
 const NVM_INSTALL_VERSION = 'v0.40.7';
 
 function getNvmCommandPrefix(projectDir) {
@@ -98,22 +99,24 @@ function getNvmCommandPrefix(projectDir) {
   const nvmDir = process.env.NVM_DIR || path.join(os.homedir(), '.nvm');
   const nvmScript = path.join(nvmDir, 'nvm.sh');
 
-  // bootstrap.sh/.ps1 sadece git/node/gh kurar, nvm'i HİÇ kurmaz — bu
-  // yüzden bizim tool'umuzla (brew/winget ile) kurulmuş taze bir makinede
-  // nvm.sh bulunamıyor, bu fonksiyon sessizce boş dönüyor ve .nvmrc fiilen
-  // yok sayılıyor gibi görünüyordu (gerçek bir Airalo projesinde/VM'de
-  // gözlemlendi — .nvmrc pinlenmiş sürüm hiç devreye girmedi çünkü nvm hiç
-  // kurulu değildi). nvm kurulu değilse, komutun kendisi (çalıştığı
-  // makinede) resmi kurulum script'iyle önce nvm'i kurar.
+  // bootstrap.sh/.ps1 only installs git/node/gh, it NEVER installs nvm — so
+  // on a fresh machine set up by our own tool (via brew/winget), nvm.sh
+  // can't be found, this function used to silently return empty, and
+  // .nvmrc effectively appeared to be ignored (observed on a real Airalo
+  // project/VM — the pinned .nvmrc version never kicked in because nvm
+  // wasn't installed at all). If nvm isn't installed, the command itself
+  // (on the machine it runs on) installs nvm first via the official install
+  // script.
   //
-  // İlk denemede kurulum çıktısı "> /dev/null 2>&1" ile bastırılmıştı;
-  // gerçek bir VM'de curl sessizce başarısız olduğunda (ör. geçici ağ
-  // sorunu) hiçbir iz bırakmadan nvm.sh hâlâ yok oluyordu, "&&" kısa devre
-  // yapıp nvm install hiç çalışmıyordu ve script mevcut (yanlış) Node ile
-  // sessizce devam edip aynı native-build hatasını tekrarlıyordu. Artık:
-  // (1) kurulum çıktısı gizlenmiyor (gerçek hata görünür olur), (2) sadece
-  // dosyanın var olduğuna GÜVENMİYORUZ — kurulum denemesinden SONRA
-  // çalışma anında tekrar kontrol edip yoksa açık bir uyarı basıyoruz.
+  // On the first attempt, the install output was suppressed with
+  // "> /dev/null 2>&1"; on a real VM, when curl silently failed (e.g. a
+  // transient network issue), nvm.sh still didn't exist with no trace left
+  // behind, "&&" short-circuited so nvm install never ran, and the script
+  // silently carried on with the current (wrong) Node, repeating the same
+  // native-build error. Now: (1) the install output is no longer hidden (a
+  // real failure becomes visible), (2) we no longer just TRUST that the
+  // file exists — we check again at runtime AFTER the install attempt and
+  // print an explicit warning if it's still missing.
   const installNvmCmd = fs.existsSync(nvmScript)
     ? ''
     : `curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_INSTALL_VERSION}/install.sh" | bash; `;
@@ -125,9 +128,9 @@ function getNvmCommandPrefix(projectDir) {
   );
 }
 
-// `docker` komutunun PATH'te olması, Docker Desktop'ın gerçekten AÇIK olduğu
-// anlamına gelmez (CLI kurulu olsa bile daemon kapalıysa her docker komutu
-// başarısız olur). "docker info" daemon'a gerçekten bağlanmayı dener.
+// `docker` being on PATH doesn't mean Docker Desktop is actually RUNNING
+// (even if the CLI is installed, every docker command fails if the daemon
+// is off). "docker info" actually attempts to connect to the daemon.
 function isDockerDaemonRunning() {
   try {
     execSync('docker info', { stdio: 'ignore' });
@@ -137,16 +140,18 @@ function isDockerDaemonRunning() {
   }
 }
 
-// `docker` CLI kurulu olsa bile "docker compose" alt komutu ayrı bir CLI
-// plugin'i olarak çözülür; Docker CLI bunu sadece belirli dizinlerde arar
-// (~/.docker/cli-plugins/, /usr/local/lib/docker/cli-plugins/ vb.). Homebrew'ın
-// docker-desktop cask'ı gerçek plugin binary'sine (Docker.app içinde) işaret
-// eden bir symlink'i KENDİ /usr/local/cli-plugins/ dizinine koyuyor — bu,
-// Docker CLI'ın arama yollarından biri DEĞİL, bu yüzden plugin hiç
-// bulunamıyor ve "docker: unknown command: docker compose" hatası veriyor
-// (gerçek bir macOS VM'de gözlemlendi: dosya doğruydu, sadece yanlış
-// klasördeydi). isDockerComposeAvailable bunu tespit eder, fixDockerComposePlugin
-// gerçek plugin'i bulup doğru dizine kendi symlink'imizi oluşturarak düzeltir.
+// Even if the `docker` CLI is installed, the "docker compose" subcommand
+// resolves as a separate CLI plugin; the Docker CLI only looks for it in
+// certain directories (~/.docker/cli-plugins/,
+// /usr/local/lib/docker/cli-plugins/ etc.). Homebrew's macOS docker-desktop
+// cask puts a symlink pointing at the real plugin binary (inside Docker.app)
+// into its OWN /usr/local/cli-plugins/ directory — this is NOT one of the
+// Docker CLI's search paths, so the plugin can never be found and it
+// produces a "docker: unknown command: docker compose" error (observed on
+// a real macOS VM: the file was correct, just in the wrong folder).
+// isDockerComposeAvailable detects this, and fixDockerComposePlugin fixes it
+// by finding the real plugin and creating our own symlink to it in the
+// right directory.
 function isDockerComposeAvailable() {
   try {
     execSync('docker compose version', { stdio: 'ignore' });
@@ -173,12 +178,12 @@ function fixDockerComposePlugin() {
   try {
     fs.mkdirSync(targetDir, { recursive: true });
     try {
-      // lstatSync (existsSync değil): hedef zaten var ama bozuk bir symlink'se
-      // existsSync false döner, unlink yine de gerekir.
+      // lstatSync (not existsSync): if the target already exists but is a
+      // broken symlink, existsSync returns false, yet we still need to unlink it.
       fs.lstatSync(target);
       fs.unlinkSync(target);
     } catch {
-      // target hiç yoktu, sorun değil
+      // target didn't exist at all, that's fine
     }
     fs.symlinkSync(fs.realpathSync(source), target);
     return isDockerComposeAvailable();
@@ -187,10 +192,10 @@ function fixDockerComposePlugin() {
   }
 }
 
-// Windows'ta Docker Desktop'ın WSL2 backend'i için en az bir WSL2 dağıtımı
-// gerekir. Sadece bilgi amaçlı, salt-okunur bir kontrol (hiçbir şeyi kurmaz/değiştirmez).
-// `wsl -l -v` çıktısı bazı Windows sürümlerinde UTF-16LE olarak basıldığından
-// iki encoding de denenir; ayrıştırma en iyi çaba (best-effort) niteliğindedir.
+// On Windows, Docker Desktop's WSL2 backend requires at least one WSL2
+// distro. This is an informational, read-only check only (installs/changes nothing).
+// `wsl -l -v` output is printed as UTF-16LE on some Windows versions, so
+// both encodings are tried; the parsing is best-effort.
 function checkWsl2Status() {
   if (getPlatform() !== 'windows') return { ok: true, skipped: true };
   if (!commandExists('wsl')) {

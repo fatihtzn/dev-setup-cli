@@ -31,7 +31,7 @@
 
 set -euo pipefail
 
-# ---- Ayarlanabilir tek değer: aracın gerçek reposu ----------------------
+# ---- The one configurable value: the tool's actual repo ------------------
 GH_REPO="fatihtzn/dev-setup-cli"
 CLONE_DIR="${HOME}/dev-setup-cli"
 # --------------------------------------------------------------------------
@@ -49,14 +49,14 @@ fail()  { printf '%s\n' "${RED}❌ $*${RESET}"; exit 1; }
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
-# gh'nin kendi "Enter'a bas -> tarayıcıyı aç" mekanizması bazı sanal
-# makinelerde (ör. ekran paylaşımlı VM) Enter'a basılsa bile tarayıcıyı
-# sessizce açmayabiliyor (gerçek testte gözlemlendi). Bu yüzden gh'nin
-# çıktısını arka planda izleyip login URL'ini biz de `open` ile açıyoruz —
-# gh'nin normal akışını bozmamak için `script` ile gerçek bir pty'ye
-# bağlıyoruz (aksi halde stdout pipe'a döner, gh interaktif modu/renk
-# çıktısını kapatabilir). Hem "gh auth login" hem "gh auth refresh" aynı
-# tarayıcı-açma davranışını kullandığı için ortak bir fonksiyon.
+# gh's own "press Enter -> open the browser" mechanism sometimes fails to
+# silently open the browser on some virtual machines (e.g. a screen-shared
+# VM) even after pressing Enter (observed in a real test). So we watch gh's
+# output in the background and open the login URL ourselves via `open` —
+# we attach it to a real pty via `script` so as not to break gh's normal
+# flow (otherwise stdout turns into a pipe, which can disable gh's
+# interactive mode/color output). Both "gh auth login" and "gh auth
+# refresh" use the same browser-opening behavior, hence a shared function.
 run_gh_auth_with_reliable_browser_open() {
   if ! command_exists script; then
     "$@"
@@ -108,11 +108,11 @@ else
   ok "Homebrew already installed."
 fi
 
-# brew /opt/homebrew (Apple Silicon) ya da /usr/local (Intel) altına kurulur
-# ve PATH'e otomatik girmeyebilir. Hem bu oturum hem de ileride açılacak
-# terminaller için PATH'i kalıcı şekilde ayarlıyoruz (~/.zprofile) —
-# aksi halde script kapandıktan sonra "gh: command not found" gibi hatalar
-# alınır çünkü eval sadece o anki process'i etkiler, kalıcı olmaz.
+# brew installs under /opt/homebrew (Apple Silicon) or /usr/local (Intel)
+# and may not automatically end up on PATH. We set up PATH persistently
+# (~/.zprofile) for both this session and terminals opened later —
+# otherwise, after the script closes, errors like "gh: command not found"
+# show up, because eval only affects the current process, not permanently.
 BREW_BIN=""
 if [ -x /opt/homebrew/bin/brew ]; then
   BREW_BIN="/opt/homebrew/bin/brew"
@@ -146,30 +146,30 @@ if gh auth status >/dev/null 2>&1; then
   ok "GitHub CLI is already signed in."
 else
   info "GitHub sign-in required. A browser will open, sign in via Okta SSO (including MFA)."
-  # https protokolü: makinede SSH key kurulu/kayıtlı olması şartı yok,
-  # gh kendi token'ıyla kimlik doğruluyor (git clone/push dahil).
-  # read:packages: GitHub Packages'tan (npm.pkg.github.com) private paket
-  # çekebilmek için gerekli, gh'nin varsayılan minimum scope seti bunu
-  # içermez (aşağıdaki read:packages kontrolüne bakınız).
+  # https protocol: no requirement for an SSH key to be set up/registered
+  # on the machine, gh authenticates with its own token (including for git
+  # clone/push). read:packages: needed to pull private packages from
+  # GitHub Packages (npm.pkg.github.com), gh's default minimum scope set
+  # doesn't include this (see the read:packages check below).
   run_gh_auth_with_reliable_browser_open gh auth login --web --git-protocol https --scopes read:packages
 
   gh auth status >/dev/null 2>&1 || fail "GitHub sign-in did not complete. Try again: gh auth login --web --git-protocol https --scopes read:packages"
 fi
 
-# Daha önce ssh protokolüyle giriş yapılmış olabilir (eski bootstrap
-# çalıştırmaları) — SSH key şartını tamamen kaldırmak için burada da
-# https'e zorluyoruz, giriş adımını atlasak bile. gh, host bazlı protokolü
-# ~/.config/gh/hosts.yml içinde AYRICA tutar ve genel config'i (config.yml)
-# ezer — ikisini de set etmezsek "gh repo clone" sessizce ssh'e döner.
+# A previous sign-in may have used the ssh protocol (old bootstrap runs) —
+# to fully remove the SSH key requirement, we force https here too, even
+# if we skipped the sign-in step. gh keeps the host-based protocol
+# SEPARATELY in ~/.config/gh/hosts.yml, and it overrides the general config
+# (config.yml) — if we don't set both, "gh repo clone" silently falls back to ssh.
 gh config set git_protocol https
 gh config set -h github.com git_protocol https
 
-# gh'nin varsayılan minimum scope seti (repo, read:org, gist) GitHub
-# Packages'ı (npm.pkg.github.com) İÇERMEZ — bazı Airalo JS repoları
-# bağımlılıklarını oradan private paket olarak çeker (gerçek bir Airalo
-# frontend reposunda "Invalid authentication"/403 permission_denied ile
-# gözlemlendi). Daha önce (bu scope talep edilmeden) giriş yapılmış olabilir,
-# bu yüzden burada da idempotent şekilde kontrol edip eksikse ekliyoruz.
+# gh's default minimum scope set (repo, read:org, gist) does NOT include
+# GitHub Packages (npm.pkg.github.com) — some Airalo JS repos pull their
+# dependencies from there as private packages (observed on a real Airalo
+# frontend repo as "Invalid authentication"/403 permission_denied). A
+# previous sign-in may have happened without requesting this scope, so we
+# check idempotently here too and add it if missing.
 if ! gh auth status 2>&1 | grep -q "read:packages"; then
   info "Adding read:packages permission for GitHub Packages (private npm packages)..."
   run_gh_auth_with_reliable_browser_open gh auth refresh --hostname github.com --scopes read:packages
@@ -177,9 +177,9 @@ fi
 gh auth setup-git >/dev/null 2>&1 || true
 
 # ---- 4) Clone dev-setup-cli (updates it if already present) ---------------
-# SSH anahtarı gerektirmemesi için git+ssh yerine gh'nin kendi (token
-# tabanlı, HTTPS) kimlik doğrulamasıyla clone ediyoruz — makinede GitHub'a
-# kayıtlı bir SSH key olması şart değil.
+# To avoid requiring an SSH key, we clone with gh's own (token-based,
+# HTTPS) authentication instead of git+ssh — there's no requirement for
+# an SSH key to be registered on GitHub for this machine.
 if [ -d "$CLONE_DIR/.git" ]; then
   info "dev-setup-cli already exists at $CLONE_DIR, updating..."
   git -C "$CLONE_DIR" pull --ff-only

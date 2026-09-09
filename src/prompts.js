@@ -3,8 +3,8 @@ const overrides = require('../config/projects.json');
 const { listRepos } = require('./steps/listGithubRepos');
 const { isDryRun } = require('./dryRunState');
 
-// dry-run modunda gh CLI'a hiç dokunulmaz; akışı yine de gösterebilmek için
-// bunun yerine örnek bir repo listesi kullanılır.
+// In dry-run mode the gh CLI is never touched; a sample repo list is used
+// instead, so the flow can still be shown.
 const MOCK_REPOS = [
   {
     name: 'web-app',
@@ -18,12 +18,12 @@ const MOCK_REPOS = [
   },
 ];
 
-// Şirketin GitHub organizasyonu sabit — kullanıcıya sorulmuyor.
+// The company's GitHub organization is fixed — not asked from the user.
 const ORG = 'Airalo';
 
-// config/projects.json içinde repo adına göre özel ayar var mı diye bakar
-// (örn. docker-compose dosya adı farklıysa, özel postClone komutları varsa).
-// Bulamazsa null döner, generic akış devreye girer.
+// Looks up whether config/projects.json has a special setting for this repo
+// name (e.g. a different docker-compose filename, custom postClone commands).
+// Returns null if not found, and the generic flow takes over.
 function findOverride(repoName) {
   for (const dep of Object.keys(overrides)) {
     if (dep === '_readme') continue;
@@ -62,11 +62,11 @@ async function selectProject() {
       title: r.description ? `${r.name} — ${r.description}` : r.name,
       value: r.name,
     })),
-    // prompts kütüphanesinin varsayılan filtresi sadece başlangıç eşleşmesi yapar
-    // (örn. "backend" yazınca "airalo-backend" bulunamaz). Repo adları çoğunlukla
-    // ortak öneklerle (airalo-, nx-, plx-, px-, test-, ux-, data-...) başladığından
-    // burada repo adının/açıklamasının HERHANGİ bir yerinde geçen metni arayan
-    // case-insensitive bir substring filtresi kullanılıyor.
+    // The prompts library's default filter only matches from the start
+    // (e.g. typing "backend" won't find "airalo-backend"). Since repo names
+    // mostly start with common prefixes (airalo-, nx-, plx-, px-, test-,
+    // ux-, data-...), a case-insensitive substring filter is used here that
+    // matches text ANYWHERE in the repo name/description.
     suggest: (input, choices) => {
       const term = input.trim().toLowerCase();
       if (!term) return Promise.resolve(choices);
@@ -83,7 +83,7 @@ async function selectProject() {
     displayName: repoName,
     repo: repo.nameWithOwner,
     envExampleFile: '.env.example',
-    ...override, // override varsa generic ayarların üzerine yazar
+    ...override, // if an override exists, it overwrites the generic settings
   };
 
   return { projectKey: repoName, config };

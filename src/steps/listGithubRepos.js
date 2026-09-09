@@ -1,8 +1,8 @@
 const { execFileSync } = require('child_process');
 
 /**
- * gh CLI üzerinden bir organizasyonun (veya kullanıcının) repolarını çeker.
- * gh auth login zaten yapılmış olmalı (Okta SSO sonrası token gh'de saklı).
+ * Fetches an organization's (or user's) repos via the gh CLI.
+ * gh auth login must already be done (the token is stored in gh after Okta SSO).
  */
 function listRepos(owner) {
   const raw = execFileSync(

@@ -31,7 +31,7 @@ async function main() {
     );
   }
 
-  // Repo listesini çekebilmek için önce GitHub/Okta girişi gerekiyor.
+  // GitHub/Okta sign-in is required first, so the repo list can be fetched.
   const prereq = await checkPrerequisites({ requiresDocker: false });
   if (!prereq.ok) process.exit(1);
   githubAuth();
@@ -42,8 +42,8 @@ async function main() {
   const targetDir = path.join(process.cwd(), projectKey);
   cloneRepo(initialConfig, targetDir);
 
-  // Repo klonlandıktan sonra docker-compose / paket yöneticisi otomatik tespit edilir
-  // (config/projects.json'da bu proje için özel ayar tanımlıysa onlar önceliklidir).
+  // Once the repo is cloned, docker-compose / package manager are auto-detected
+  // (if config/projects.json defines a special setting for this project, that takes priority).
   const config = autoDetect(initialConfig, targetDir);
 
   if (config.requiresDocker) {
@@ -54,12 +54,12 @@ async function main() {
   setupEnv(config, targetDir);
   const { failed: failedCommands } = runPostCloneCommands(config, targetDir);
   const { ok: dockerOk } = await dockerUp(config, targetDir);
-  // Docker gerektirmeyen projelerde (frontend/backend fark etmeksizin) dev server'ı
-  // arka planda başlatıp portu tespit eder; docker'lı projelerde no-op'tur.
+  // For projects that don't require Docker (frontend or backend, doesn't matter), starts the
+  // dev server in the background and detects its port; a no-op for Docker-based projects.
   await runProject(config, targetDir);
 
-  // dockerUp başarısız olduysa, proje-özel readyMessage ("... çalışıyor!" gibi)
-  // yanıltıcı olur — bu yüzden o durumda gösterilmez, sadece uyarı basılır.
+  // If dockerUp failed, the project-specific readyMessage ("... is running!" etc.)
+  // would be misleading — so it's not shown in that case, only a warning is printed.
   if (dockerOk) {
     console.log(`\n🎉 ${config.readyMessage || 'Setup complete, you are ready to start coding!'}\n`);
   } else {

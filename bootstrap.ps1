@@ -17,28 +17,27 @@
 # Windows equivalent was written by mirroring that logic) -- be careful on
 # first use and share the exact error text if something goes wrong.
 
-# Bilerek "Stop" DEGIL. Harici (.exe) komutlar (winget, git, npm, gh) stderr'e
-# bir sey yazdiginda -- basarili kurulumlarda bile sik sik ilerleme/bilgi
-# mesaji yazarlar -- PowerShell $ErrorActionPreference = "Stop" iken bunu
-# TERMINATING bir hataya cevirip scripti aninda, hicbir aciklama vermeden
-# durduruyor (gercek bir Windows makinesinde "winget kurduktan sonra hata
-# verip kapaniyor" olarak gozlemlendi). Bunun yerine "Continue" kullanip her
-# kritik native komuttan sonra GERCEK basariyi $LASTEXITCODE ile kontrol
-# ediyoruz.
+# Deliberately NOT "Stop". When external (.exe) commands (winget, git, npm,
+# gh) write anything to stderr -- they often print progress/info messages
+# even on successful installs -- PowerShell's $ErrorActionPreference =
+# "Stop" turns this into a TERMINATING error and kills the script instantly,
+# with no explanation (observed on a real Windows machine as "errors out
+# and closes right after installing winget"). Instead we use "Continue"
+# and check the REAL success via $LASTEXITCODE after every critical native command.
 $ErrorActionPreference = "Continue"
 
-# npm Windows'ta hem npm.cmd hem npm.ps1 olarak gelir; PowerShell'de bare
-# "npm" komutu genellikle npm.ps1'i calistirmaya calisir. Varsayilan Windows
-# PowerShell execution policy'si (Restricted) imzasiz .ps1 dosyalarini
-# engelledigi icin bu, "npm.ps1 cannot be loaded because running scripts is
-# disabled on this system" hatasiyla scripti durduruyordu (gercek bir
-# Windows makinesinde gozlemlendi). "Process" scope sadece bu script'in
-# calistigi anlik PowerShell process'ini etkiler -- kalici bir sistem/
-# kullanici ayarini DEGISTIRMEZ, process kapaninca kendiliginden sona erer,
-# ve admin yetkisi gerektirmez.
+# On Windows, npm ships as both npm.cmd and npm.ps1; in PowerShell, the
+# bare "npm" command usually tries to run npm.ps1. Because the default
+# Windows PowerShell execution policy (Restricted) blocks unsigned .ps1
+# files, this used to stop the script with a "npm.ps1 cannot be loaded
+# because running scripts is disabled on this system" error (observed on a
+# real Windows machine). The "Process" scope only affects the current
+# PowerShell process this script is running in -- it does NOT change any
+# persistent system/user setting, ends on its own when the process closes,
+# and doesn't require admin rights.
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 
-# ---- Ayarlanabilir tek deger: aracin gercek reposu ------------------------
+# ---- The one configurable value: the tool's actual repo ------------------
 $GhRepo   = "fatihtzn/dev-setup-cli"
 $CloneDir = Join-Path $HOME "dev-setup-cli"
 # ----------------------------------------------------------------------------
@@ -46,8 +45,8 @@ $CloneDir = Join-Path $HOME "dev-setup-cli"
 function Write-Info { param($msg) Write-Host "==> $msg" -ForegroundColor Cyan }
 function Write-Ok   { param($msg) Write-Host "OK  $msg" -ForegroundColor Green }
 function Write-Warn { param($msg) Write-Host "!!  $msg" -ForegroundColor Yellow }
-# exit yerine throw: en disttaki try/catch hatayi yakalayip pencere
-# kapanmadan once kullaniciya gosterip Enter bekleyebilsin diye.
+# throw instead of exit: so the outermost try/catch can catch the error,
+# show it to the user before the window closes, and wait for Enter.
 function Write-Fail { param($msg) Write-Host "X   $msg" -ForegroundColor Red; throw $msg }
 
 function Test-CommandExists {
@@ -55,10 +54,11 @@ function Test-CommandExists {
     return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
-# winget ile bir sey kurduktan sonra, o programin PATH degisikligi bu
-# PowerShell oturumuna otomatik yansimaz (Windows PATH process-basli cache'lenir).
-# Machine + User PATH'lerini birlestirip mevcut oturuma yeniden uyguluyoruz,
-# aksi halde "kuruldu ama hala bulunamiyor" hatasi alinir.
+# After installing something with winget, that program's PATH change isn't
+# automatically reflected in this PowerShell session (Windows PATH is
+# cached per-process). We merge the Machine + User PATHs and reapply them
+# to the current session, otherwise we get an "installed but still not
+# found" error.
 function Update-SessionPath {
     $machine = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
     $user    = [System.Environment]::GetEnvironmentVariable("Path", "User")
@@ -90,16 +90,18 @@ try {
             continue
         }
         Write-Info "Installing $($tool.Cmd) (winget install --id $($tool.WingetId))..."
-        # --source winget: winget ID'yi hem "winget" hem "msstore" kaynagida
-        # ararsa hangisini kullanacagini sormadan winget kaynagina sabitler.
-        # msstore kaynaginin sertifika dogrulamasi bazi (ozellikle disposable/
-        # test) VM'lerde basarisiz olup ("0x8a15005e: The server certificate
-        # did not match...") tum kurulumu hicbir sey kurmadan durdurabiliyor
-        # -- gercek bir Windows VM'de gozlemlendi.
+        # --source winget: if the winget ID exists in both the "winget" and
+        # "msstore" sources, this pins it to the winget source without
+        # asking which one to use. The msstore source's certificate
+        # validation can fail on some (especially disposable/test) VMs
+        # ("0x8a15005e: The server certificate did not match...") and stop
+        # the whole install without installing anything -- observed on a
+        # real Windows VM.
         winget install --id $tool.WingetId --source winget --silent --accept-package-agreements --accept-source-agreements
-        # winget bazi surumlerde/paketlerde basarili kurulumda bile stderr'e
-        # yazabildigi ve donus kodu tutarsiz olabildigi icin, gercek basari
-        # olcutu $LASTEXITCODE degil asagidaki Test-CommandExists kontrolu.
+        # Since winget can write to stderr even on a successful install
+        # (depending on version/package) and its return code can be
+        # inconsistent, the real success criterion is the Test-CommandExists
+        # check below, not $LASTEXITCODE.
         Update-SessionPath
         if (-not (Test-CommandExists $tool.Cmd)) {
             Write-Fail "$($tool.Cmd) was installed but still cannot be found in this session. Open a new PowerShell window and re-run the script."
@@ -115,21 +117,22 @@ try {
         Write-Ok "GitHub CLI is already signed in."
     } else {
         Write-Info "GitHub sign-in required. A browser will open, sign in via Okta SSO (including MFA)."
-        # https protokolü: makinede SSH key kurulu/kayıtlı olması şartı yok, gh
-        # kendi token'ıyla kimlik doğruluyor (git clone/push dahil) — macOS'taki
-        # bootstrap.sh'de "Permission denied (publickey)" ile bulunan aynı sorunun
-        # Windows tarafı. read:packages: GitHub Packages'tan (npm.pkg.github.com)
-        # private paket çekebilmek için gerekli, gh'nin varsayılan minimum scope
-        # seti bunu içermez.
+        # https protocol: no requirement for an SSH key to be set up/registered
+        # on the machine, gh authenticates with its own token (including for
+        # git clone/push) — this is the Windows side of the same issue found
+        # as "Permission denied (publickey)" in macOS's bootstrap.sh.
+        # read:packages: needed to pull private packages from GitHub Packages
+        # (npm.pkg.github.com), gh's default minimum scope set doesn't include this.
         gh auth login --web --git-protocol https --scopes read:packages
         if ($LASTEXITCODE -ne 0) {
             Write-Fail "GitHub sign-in did not complete (exit code $LASTEXITCODE). Try again: gh auth login --web --git-protocol https --scopes read:packages"
         }
     }
 
-    # Daha önce ssh protokolüyle ya da read:packages olmadan giriş yapılmış
-    # olabilir — burada da idempotent şekilde düzeltiyoruz. gh, host bazlı
-    # protokolü ayrıca tutar ve genel config'i ezer, ikisini de set ediyoruz.
+    # A previous sign-in may have used the ssh protocol, or happened
+    # without read:packages — we fix this idempotently here too. gh keeps
+    # the host-based protocol separately and it overrides the general
+    # config, so we set both.
     gh config set git_protocol https
     gh config set -h github.com git_protocol https
     $authStatusText = (gh auth status 2>&1 | Out-String)
@@ -140,8 +143,8 @@ try {
     gh auth setup-git *> $null
 
     # ---- 4) Clone dev-setup-cli (updates it if already present) ---------------
-    # SSH anahtarı gerektirmemesi için git+ssh yerine gh'nin kendi (token
-    # tabanlı, HTTPS) kimlik doğrulamasıyla clone ediyoruz.
+    # To avoid requiring an SSH key, we clone with gh's own (token-based,
+    # HTTPS) authentication instead of git+ssh.
     if (Test-Path (Join-Path $CloneDir ".git")) {
         Write-Info "dev-setup-cli already exists at $CloneDir, updating..."
         git -C $CloneDir pull --ff-only

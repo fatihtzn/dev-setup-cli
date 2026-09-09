@@ -5,18 +5,18 @@ const { isDryRun } = require('../dryRunState');
 const { waitForPort } = require('./healthCheck');
 const { getNvmCommandPrefix, getPlatform } = require('../platform');
 
-// Dev server loglarında portu yakalamak için denenen kalıplar (Vite, Next.js,
-// CRA, Vue CLI, Express/Nest gibi araçların tipik çıktılarını kapsar).
+// Patterns tried to capture the port in dev server logs (covers the typical
+// output of tools like Vite, Next.js, CRA, Vue CLI, Express/Nest).
 const PORT_PATTERNS = [/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})/i, /port[:\s]+(\d{3,5})/i];
 
-// Log'dan port yakalanamazsa denenecek en yaygın dev server portları.
+// Most common dev server ports to try if the port can't be captured from the log.
 const COMMON_DEV_PORTS = [3000, 5173, 8080, 4200, 5000, 8000, 4000];
 
-// command.split(' ') tırnaklı argümanları (örn. --title "My App") yanlış
-// böler ve fazladan boşlukları boş string token'a çevirir. Bu basit parser
-// çift/tek tırnak içindeki bloğu tek argüman olarak korur; tam bir shell
-// parser değildir (iç içe/kaçışlı tırnak desteklemez) ama bizim desteklediğimiz
-// tüm komutlar (npm/yarn/pnpm/npx/php run komutları) için yeterlidir.
+// command.split(' ') incorrectly splits quoted arguments (e.g. --title "My
+// App") and turns extra spaces into empty string tokens. This simple parser
+// keeps a block inside double/single quotes as a single argument; it's not
+// a full shell parser (doesn't support nested/escaped quotes) but it's
+// enough for all the commands we support (npm/yarn/pnpm/npx/php run commands).
 function parseCommand(command) {
   const TOKEN_RE = /"([^"]*)"|'([^']*)'|(\S+)/g;
   const parts = [];
@@ -33,8 +33,8 @@ function detectPackageManager(projectDir) {
   return 'npm';
 }
 
-// package.json'daki scripts alanında dev/start/serve konvansiyonunu arar
-// (JS ekosisteminde en yaygın "projeyi çalıştır" script isimleri).
+// Looks for the dev/start/serve convention in package.json's scripts field
+// (the most common "run the project" script names in the JS ecosystem).
 function detectNpmRunScript(projectDir) {
   const pkgPath = path.join(projectDir, 'package.json');
   if (!fs.existsSync(pkgPath)) return null;
@@ -48,10 +48,10 @@ function detectNpmRunScript(projectDir) {
 
   const scripts = pkg.scripts || {};
   const pm = detectPackageManager(projectDir);
-  // yarn/pnpm'i PATH'ten çıplak çağırmak yerine corepack üzerinden
-  // çalıştırıyoruz — bkz. setupProject.js'deki ensureCorepackAvailable
-  // yorumu: PATH'te globalce kurulu, projenin pinlenmiş sürümüyle
-  // (package.json "packageManager" alanı) uyuşmayan bir yarn/pnpm olabilir.
+  // We run yarn/pnpm through corepack instead of calling it bare from PATH —
+  // see the ensureCorepackAvailable comment in setupProject.js: a globally
+  // installed yarn/pnpm on PATH may not match the version the project has
+  // pinned (package.json's "packageManager" field).
   const runner = pm === 'npm' ? pm : `corepack ${pm}`;
   for (const candidate of ['dev', 'start', 'serve']) {
     if (scripts[candidate]) return `${runner} run ${candidate}`;
@@ -61,11 +61,11 @@ function detectNpmRunScript(projectDir) {
 
 const README_RUN_HEADING_RE =
   /^#+\s*(getting started|installation|install|setup|kurulum|run|running|development|local development|start|çalıştırma|başlatma)/i;
-// Sadece bilinen paket yöneticisi komutlarıyla başlayan tek satırlık, "dev/start/serve"
-// script'i çalıştıran komutlar güvenli kabul edilir ve otomatik çalıştırılır.
-// README'ler makine tarafından çalıştırılmak için yazılmadığından (placeholder'lar,
-// platforma özel alternatifler, sudo/rm gibi örnekler içerebilir) başka hiçbir satır
-// otomatik çalıştırılmaz.
+// Only single-line commands that start with a known package manager command
+// and run a "dev/start/serve" script are considered safe and run
+// automatically. Since READMEs aren't written to be run by a machine (they
+// can contain placeholders, platform-specific alternatives, sudo/rm-style
+// examples), no other line is ever run automatically.
 const SAFE_CMD_RE = /^(npm|yarn|pnpm|npx)\s+(run\s+)?(dev|start|serve)\b/i;
 
 function findReadmeFile(projectDir) {
@@ -73,9 +73,10 @@ function findReadmeFile(projectDir) {
   return candidates.find((f) => fs.existsSync(path.join(projectDir, f))) || null;
 }
 
-// README.md içindeki "run/setup/kurulum/çalıştırma" gibi başlıkların altındaki kod
-// bloklarını tarar. Güvenli bir komut bulursa onu döner; bulamazsa (ama ilgili
-// bölümde başka komut satırları varsa) kullanıcının elle bakması için "hints" döner.
+// Scans code blocks under headings like "run/setup/installation" in
+// README.md. Returns a safe command if it finds one; otherwise (but if
+// there are other command lines in that section) returns "hints" for the
+// user to check manually.
 function detectReadmeRunCommand(projectDir) {
   const readmeFile = findReadmeFile(projectDir);
   if (!readmeFile) return { command: null, hints: [] };
@@ -121,16 +122,17 @@ function detectReadmeRunCommand(projectDir) {
   return { command: null, hints };
 }
 
-// Laravel projelerinde kök dizinde `artisan` betiği bulunur; bu tek dosyanın
-// varlığı bile "bu bir Laravel projesi" demek için yeterli, yaygın bir kanıt.
-// `php artisan serve` varsayılan olarak http://127.0.0.1:8000 adresinde dinler
-// ve bunu stdout'a basar, bu yüzden port sniffing ek bir işlem gerektirmeden çalışır.
+// Laravel projects have an `artisan` script at their root; the mere
+// presence of this single file is common, sufficient evidence that "this is
+// a Laravel project". `php artisan serve` listens on http://127.0.0.1:8000
+// by default and prints it to stdout, so port sniffing works without any extra effort.
 function detectArtisanRunCommand(projectDir) {
   return fs.existsSync(path.join(projectDir, 'artisan')) ? 'php artisan serve' : null;
 }
 
-// Öncelik sırası: 1) config/projects.json'da açık runCommand  2) package.json
-// dev/start/serve script'i  3) Laravel artisan  4) README.md'den çıkarılan güvenli komut.
+// Priority order: 1) explicit runCommand in config/projects.json  2)
+// package.json's dev/start/serve script  3) Laravel artisan  4) a safe
+// command extracted from README.md.
 function detectRunCommand(config, projectDir) {
   if (config.runCommand) return { command: config.runCommand, source: 'config override' };
 
@@ -147,18 +149,18 @@ function detectRunCommand(config, projectDir) {
   return null;
 }
 
-// child.pid, spawn ettiğimiz İLK süreç (bash ya da doğrudan yarn/corepack) —
-// gerçek dev server ise (vite/webpack-dev-server, nodemon vb.) neredeyse hep
-// bunun bir alt/torun süreci oluyor (corepack -> yarn -> vite gibi zincirler,
-// ya da nvm-prefix'li "bash -c '...; nvm install; komut'" zinciri). detached:
-// true kullandığımız için POSIX'te bu üst süreç kendi process group'unun
-// lideri oluyor (pgid === pid); düz "kill PID" SADECE o tek üst süreci
-// öldürüyor, port'u gerçekten tutan alt süreç hayatta kalıyor ve "kill
-// çalışmıyor" gibi görünüyor (gerçek kullanıcı raporunda gözlemlendi).
-// Negatif PID ile kill, tüm process group'u (üst süreç + tüm alt/torun
-// süreçleri) öldürür. Windows'ta "kill" native bir komut değil ve shell:
-// true nedeniyle PID bir cmd.exe sarmalayıcısına ait olduğundan, "/T" (alt
-// ağaç dahil) ve "/F" (zorla) ile taskkill kullanılıyor.
+// child.pid is the FIRST process we spawn (bash, or yarn/corepack directly)
+// — the actual dev server (vite/webpack-dev-server, nodemon etc.) is almost
+// always a child/grandchild of it (chains like corepack -> yarn -> vite, or
+// the nvm-prefixed "bash -c '...; nvm install; command'" chain). Since we
+// use detached: true, on POSIX this top process becomes the leader of its
+// own process group (pgid === pid); a plain "kill PID" ONLY kills that one
+// top process, the child that actually holds the port survives, and it
+// looks like "kill isn't working" (observed in a real user report). Kill
+// with a negative PID kills the whole process group (the top process + all
+// its children/grandchildren). On Windows "kill" isn't a native command,
+// and since PID belongs to a cmd.exe wrapper because of shell: true,
+// taskkill is used with "/T" (include the subtree) and "/F" (force).
 function getStopCommand(pid) {
   return getPlatform() === 'windows' ? `taskkill /PID ${pid} /T /F` : `kill -- -${pid}`;
 }
@@ -176,19 +178,19 @@ function sniffPortFromLog(logPath) {
   return null;
 }
 
-// Spawn'dan ÖNCE hangi ortak portların zaten (bizim başlattığımız süreçle
-// ilgisiz) açık olduğunu kaydeder. Aksi halde, log'dan port yakalanamadığında
-// devreye giren fallback, örneğin geliştiricinin başka bir projeden zaten
-// açık bıraktığı 3000 portunu bizim yeni başlattığımız servis sanıp yanlışlıkla
-// "hazır" diye raporlayabilirdi.
+// Records which common ports are already open BEFORE spawning (unrelated to
+// the process we're starting). Otherwise, the fallback that kicks in when
+// the port can't be captured from the log could mistake, say, port 3000
+// left open by another project the developer already has running, for our
+// newly started service, and wrongly report it as "ready".
 async function snapshotOpenPorts(ports) {
   const results = await Promise.all(ports.map((port) => waitForPort(port, { timeoutMs: 300, intervalMs: 300 })));
   return new Set(ports.filter((_, i) => results[i].ok));
 }
 
-// Önce config.runPort'a, sonra log çıktısında yakalanan porta, o da yoksa en
-// yaygın dev server portlarından spawn'dan önce KAPALI olup sonradan açılan
-// ilk porta bakar (hepsi best-effort).
+// Checks config.runPort first, then the port captured from log output, and
+// if that's not there either, the first of the most common dev server
+// ports that was CLOSED before spawn and later opened (all best-effort).
 async function detectPort(config, logPath, preOpenPorts, { sniffTimeoutMs = 15000, sniffIntervalMs = 1000 } = {}) {
   if (config.runPort) return config.runPort;
 
@@ -208,12 +210,12 @@ async function detectPort(config, logPath, preOpenPorts, { sniffTimeoutMs = 1500
   return null;
 }
 
-// docker gerektirmeyen projelerde, kurulum bittikten sonra dev server'ı arka
-// planda (detached) başlatır, portunu tespit eder ve dinlemeye başlayana kadar
-// bekler — amaç, tool'dan başka hiçbir elle müdahale gerekmeden projeyi
-// çalışır halde ekrana (URL olarak) yansıtmak.
+// For projects that don't require Docker, once setup is finished, starts
+// the dev server in the background (detached), detects its port, and waits
+// until it starts listening — the goal is to reflect the running project
+// (as a URL) on screen without any manual intervention beyond the tool.
 async function runProject(config, projectDir) {
-  if (config.requiresDocker) return; // bu durumu dockerUp zaten yönetiyor
+  if (config.requiresDocker) return; // dockerUp already handles this case
 
   const detected = detectRunCommand(config, projectDir);
 
@@ -243,14 +245,14 @@ async function runProject(config, projectDir) {
   const logPath = path.join(projectDir, '.dev-setup-run.log');
   const logFd = fs.openSync(logPath, 'w');
 
-  // Spawn'dan önceki port durumunu kaydet (bkz. detectPort/snapshotOpenPorts).
+  // Record the port state before spawning (see detectPort/snapshotOpenPorts).
   const preOpenPorts = await snapshotOpenPorts(COMMON_DEV_PORTS);
 
-  // Kurulum ANI native bağımlılıkları (varsa) doğru Node sürümüne göre
-  // derlemiş olabilir (bkz. setupProject.js), ama proje bu sürümle
-  // ÇALIŞTIRILMAZSA Node ABI uyuşmazlığı yüzünden yine patlayabilir. Aynı
-  // .nvmrc/engines.node tespiti burada da uygulanıp komut bash üzerinden
-  // (nvm doğru sürümü devreye aldıktan sonra) başlatılıyor.
+  // Setup may have compiled native dependencies (if any) against the right
+  // Node version (see setupProject.js), but if the project isn't RUN with
+  // that same version, it can still blow up from a Node ABI mismatch. The
+  // same .nvmrc/engines.node detection is applied here too, and the command
+  // is started through bash (after nvm switches to the right version).
   const nvmPrefix = getNvmCommandPrefix(projectDir);
   let cmd;
   let args;
@@ -268,10 +270,12 @@ async function runProject(config, projectDir) {
   });
   child.unref();
 
-  // 'error' event'i dinlenmezse (örn. cmd komutu — yarn/pnpm/php gibi — PATH'te
-  // yoksa) Node.js unhandled exception fırlatıp scripti çökertir. Bu listener
-  // hem başlangıç hatasını (ENOENT) temiz bir mesaja çevirir, hem de child'ın
-  // ömrü boyunca kayıtlı kalarak sonraki olası bir hatanın da script'i çökertmesini engeller.
+  // If the 'error' event isn't listened for (e.g. if the cmd command — like
+  // yarn/pnpm/php — isn't on PATH), Node.js throws an unhandled exception
+  // and crashes the script. This listener both turns the startup error
+  // (ENOENT) into a clean message, and stays registered for the child's
+  // whole lifetime so it also prevents a later possible error from
+  // crashing the script.
   const spawnResult = await new Promise((resolve) => {
     child.once('spawn', () => resolve({ ok: true }));
     child.once('error', (err) => resolve({ ok: false, error: err }));

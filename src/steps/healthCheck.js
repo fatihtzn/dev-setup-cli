@@ -1,9 +1,9 @@
 const net = require('net');
 
-// Belirtilen host:port'a tek seferlik TCP bağlantısı dener.
-// HTTP'ye özgü davranmaz (200 OK aramaz) — amaç, servisin protokolünden
-// bağımsız olarak portun gerçekten dinlemede olduğunu doğrulamak
-// (web sunucusu, API, DB fark etmez).
+// Attempts a single TCP connection to the given host:port.
+// Not HTTP-specific (doesn't look for a 200 OK) — the goal is to verify the
+// port is actually listening, regardless of the service's protocol
+// (web server, API, DB, doesn't matter).
 function checkPortOnce(port, host, timeoutMs) {
   return new Promise((resolve) => {
     const socket = new net.Socket();
@@ -19,7 +19,7 @@ function checkPortOnce(port, host, timeoutMs) {
   });
 }
 
-// Port hazır olana kadar belirli aralıklarla dener, timeout'a kadar bekler.
+// Retries at fixed intervals until the port is ready, up to the timeout.
 async function waitForPort(port, { host = 'localhost', timeoutMs = 90000, intervalMs = 1500 } = {}) {
   const start = Date.now();
   do {
