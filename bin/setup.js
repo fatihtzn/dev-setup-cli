@@ -4,14 +4,17 @@ const path = require('path');
 const { selectProject } = require('../src/prompts');
 const { checkPrerequisites } = require('../src/steps/checkPrerequisites');
 const { githubAuth } = require('../src/steps/githubAuth');
+const { ensureOpReady } = require('../src/steps/secrets');
 const {
   cloneRepo,
   setupEnv,
+  restoreSecretFiles,
   runPostCloneCommands,
   dockerUp,
   autoDetect,
 } = require('../src/steps/setupProject');
 const { runProject } = require('../src/steps/runProject');
+const { ensureHostsEntry } = require('../src/steps/hostsFile');
 const { setDryRun, isDryRun } = require('../src/dryRunState');
 
 function parseArgs(argv) {
@@ -46,28 +49,54 @@ async function main() {
   // (if config/projects.json defines a special setting for this project, that takes priority).
   const config = autoDetect(initialConfig, targetDir);
 
-  if (config.requiresDocker) {
-    const dockerCheck = await checkPrerequisites(config);
-    if (!dockerCheck.ok) process.exit(1);
+  if (config.requiresDocker || config.secretManager === '1password') {
+    // Installs whatever's missing (docker, op, ...) automatically. Docker is
+    // a hard requirement — nothing else can run without it, so its failure
+    // stops the whole setup. A missing/unauthorized 1Password CLI only
+    // degrades secret-filling gracefully (plain-copy fallback below), so it
+    // alone shouldn't block everything else from proceeding.
+    const prereqCheck = await checkPrerequisites(config);
+    const dockerStillMissing = (prereqCheck.missing || []).some(
+      (t) => t.cmd === 'docker' || t.kind === 'start-daemon' || t.kind === 'fix-compose-plugin'
+    );
+    if (config.requiresDocker && dockerStillMissing) process.exit(1);
   }
 
-  setupEnv(config, targetDir);
+  // One-time-per-machine nudge if `op` is installed but not yet authorized
+  // against the user's 1Password account — see ensureOpReady's own comment
+  // for why this can't be fully automated.
+  await ensureOpReady(config);
+
+  await setupEnv(config, targetDir);
+  const { failed: failedSecretFiles } = restoreSecretFiles(config, targetDir);
   const { failed: failedCommands } = runPostCloneCommands(config, targetDir);
   const { ok: dockerOk } = await dockerUp(config, targetDir);
+  // A project whose dev server binds to a specific HOST= (not
+  // localhost/0.0.0.0) needs that hostname to actually resolve to this
+  // machine — offers to add it to the hosts file if it doesn't yet.
+  await ensureHostsEntry(targetDir);
   // For projects that don't require Docker (frontend or backend, doesn't matter), starts the
   // dev server in the background and detects its port; a no-op for Docker-based projects.
-  await runProject(config, targetDir);
+  const { ok: projectOk } = await runProject(config, targetDir);
 
-  // If dockerUp failed, the project-specific readyMessage ("... is running!" etc.)
-  // would be misleading — so it's not shown in that case, only a warning is printed.
-  if (dockerOk) {
+  // If dockerUp OR the dev server failed, the project-specific readyMessage
+  // ("... is running!" etc.) would be misleading — so it's not shown in
+  // that case, only a warning is printed.
+  if (dockerOk && projectOk) {
     console.log(`\n🎉 ${config.readyMessage || 'Setup complete, you are ready to start coding!'}\n`);
-  } else {
+  } else if (!dockerOk) {
     console.log('\n⚠️  Setup finished but Docker Compose failed to start — check the error above.\n');
+  } else {
+    console.log('\n⚠️  Setup finished but the dev server could not be confirmed running — check the warning above.\n');
   }
   if (failedCommands.length) {
     console.log('⚠️  The following setup commands failed, you may need to check them manually:');
     failedCommands.forEach((cmd) => console.log(`  - ${cmd}`));
+    console.log();
+  }
+  if (failedSecretFiles.length) {
+    console.log('⚠️  The following files could not be restored from 1Password, you may need to fetch them manually:');
+    failedSecretFiles.forEach((f) => console.log(`  - ${f}`));
     console.log();
   }
 }

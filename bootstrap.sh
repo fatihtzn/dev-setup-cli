@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Airalo Dev Setup — Bootstrap
+# Dev Setup — Bootstrap
 #
 # This is the ONE command to run on a fresh machine (nothing installed yet,
 # not even Node/Git/GitHub CLI). Goal: install the minimum toolchain needed
@@ -25,9 +25,9 @@
 # root's home (/var/root); the clone, gh sign-in, and PATH setup would then
 # go to the wrong user and be invisible from your normal terminal.
 #
-# NOTE: this currently points at fatihtzn's PERSONAL (private) repo — once
-# this tool moves to the real Airalo GitHub org, this comment and the curl
-# URL above need to be updated.
+# NOTE: if you fork this tool under your own GitHub org/account, update
+# GH_REPO below (and the curl URL in the usage comment above) to point at
+# your fork.
 
 set -euo pipefail
 
@@ -95,7 +95,7 @@ if [ "$OS" != "Darwin" ]; then
 fi
 
 echo
-echo "${BOLD}👋 Airalo Dev Setup — Bootstrap${RESET}"
+echo "${BOLD}👋 Dev Setup — Bootstrap${RESET}"
 echo "This script installs git/node/gh if missing, signs you in to GitHub, then hands off to dev-setup-cli."
 echo
 
@@ -165,8 +165,8 @@ gh config set git_protocol https
 gh config set -h github.com git_protocol https
 
 # gh's default minimum scope set (repo, read:org, gist) does NOT include
-# GitHub Packages (npm.pkg.github.com) — some Airalo JS repos pull their
-# dependencies from there as private packages (observed on a real Airalo
+# GitHub Packages (npm.pkg.github.com) — some JS repos pull their
+# dependencies from there as private packages (observed on a real production
 # frontend repo as "Invalid authentication"/403 permission_denied). A
 # previous sign-in may have happened without requesting this scope, so we
 # check idempotently here too and add it if missing.

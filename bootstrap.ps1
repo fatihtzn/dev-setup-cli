@@ -1,4 +1,4 @@
-# Airalo Dev Setup — Bootstrap (Windows)
+# Dev Setup — Bootstrap (Windows)
 #
 # This is the ONE command to run on a fresh machine (nothing installed yet,
 # not even Node/Git/GitHub CLI). Goal: install the minimum toolchain needed
@@ -67,7 +67,7 @@ function Update-SessionPath {
 
 try {
     Write-Host ""
-    Write-Host "Airalo Dev Setup - Bootstrap (Windows)" -ForegroundColor White
+    Write-Host "Dev Setup - Bootstrap (Windows)" -ForegroundColor White
     Write-Host "This script installs git/node/gh if missing, signs you in to GitHub, then hands off to dev-setup-cli."
     Write-Host ""
 

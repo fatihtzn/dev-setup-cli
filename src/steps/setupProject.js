@@ -4,8 +4,13 @@ const { execFileSync } = require('child_process');
 const yaml = require('js-yaml');
 const { run, commandExists, getNvmCommandPrefix } = require('../platform');
 const { isDryRun } = require('../dryRunState');
-const { injectWith1Password } = require('./secrets');
+const { injectWith1Password, restoreSecretFiles } = require('./secrets');
+const { resolveSecretsInteractively } = require('./dynamicSecrets');
 const { waitForPort } = require('./healthCheck');
+
+// This tool's own root directory (src/steps/ -> ../..), used to resolve
+// envTemplateFile below.
+const TOOL_ROOT = path.join(__dirname, '..', '..');
 
 function cloneRepo(config, targetDir) {
   if (isDryRun()) {
@@ -26,8 +31,17 @@ function cloneRepo(config, targetDir) {
   execFileSync('gh', ['repo', 'clone', config.repo, targetDir], { stdio: 'inherit' });
 }
 
-function setupEnv(config, projectDir) {
-  const examplePath = path.join(projectDir, config.envExampleFile || '.env.example');
+async function setupEnv(config, projectDir) {
+  // envTemplateFile (unlike envExampleFile) resolves inside THIS TOOL's own
+  // repo, not the cloned project's. That's deliberate: a template with real
+  // op://vault/item/field references would otherwise have to be committed to
+  // the shared team repo just to carry those references — putting our vault
+  // layout in a repo everyone can see, and drifting out of sync with
+  // upstream's own .env.example. Keeping it here means it's only this tool's
+  // concern; see README.md's Secret Management section.
+  const examplePath = config.envTemplateFile
+    ? path.join(TOOL_ROOT, config.envTemplateFile)
+    : path.join(projectDir, config.envExampleFile || '.env.example');
   const envPath = path.join(projectDir, '.env');
 
   if (!isDryRun() && fs.existsSync(envPath)) {
@@ -39,7 +53,7 @@ function setupEnv(config, projectDir) {
   // exist on disk; we proceed as if it did, so the flow can still be shown.
   const exampleExists = isDryRun() || fs.existsSync(examplePath);
   if (!exampleExists) {
-    console.log('⚠️  .env.example not found, .env needs to be created manually.');
+    console.log(`⚠️  ${path.basename(examplePath)} not found, .env needs to be created manually.`);
     return;
   }
 
@@ -47,6 +61,12 @@ function setupEnv(config, projectDir) {
     const result = injectWith1Password(examplePath, envPath);
     if (result.ok) return;
     console.log('ℹ️  Falling back to a plain copy of .env.example — you will need to fill in the real values manually.');
+  } else {
+    // No static secretManager configured for this project at all — ask
+    // interactively instead of silently plain-copying the example file.
+    // See dynamicSecrets.js; returns true if it already wrote .env itself.
+    const handled = await resolveSecretsInteractively(examplePath, envPath, projectDir, '.env');
+    if (handled) return;
   }
 
   if (isDryRun()) {
@@ -89,9 +109,9 @@ function runPostCloneCommands(config, projectDir) {
 // up -d` we run doesn't select any profile, so a service behind a profile
 // like profiles: ["app"] never starts with that command — picking such a
 // service's port as the health-check target would wrongly report an app
-// that never actually came up as "ready" (observed on a real Airalo repo:
-// backend/frontend was hidden behind the `app` profile, only started via
-// `make prod-local`).
+// that never actually came up as "ready" (observed on a real production
+// repo: backend/frontend was hidden behind the `app` profile, only started
+// via `make prod-local`).
 function detectComposeHostPort(projectDir, composeFile) {
   if (!composeFile) return null;
   try {
@@ -169,8 +189,8 @@ function autoDetect(config, projectDir) {
     // dockerComposeFile wasn't given — since the branch above never ran,
     // the filename is still unknown. If we don't also search here,
     // detectComposeHostPort gets called without a composeFile and the
-    // health-check is silently skipped (observed on a real Airalo repo that
-    // had a requiresDocker:true override but no dockerComposeFile).
+    // health-check is silently skipped (observed on a real production repo
+    // that had a requiresDocker:true override but no dockerComposeFile).
     detected.dockerComposeFile = composeCandidates.find((f) => fs.existsSync(path.join(projectDir, f)));
   }
 
@@ -187,12 +207,11 @@ function autoDetect(config, projectDir) {
       commands.push('composer install');
     }
 
-    // Some Airalo JS repos pull package.json dependencies from GitHub
-    // Packages (npm.pkg.github.com); these private scopes require
-    // authentication. The NODE_AUTH_TOKEN convention popularized by
-    // actions/setup-node (e.g. "npmAuthToken: ${NODE_AUTH_TOKEN}" in
-    // .yarnrc.yml) was observed on a real Airalo repo
-    // (airalo-partner-panel-frontend) — an anonymous request blew up with
+    // Some JS repos pull package.json dependencies from GitHub Packages
+    // (npm.pkg.github.com); these private scopes require authentication.
+    // The NODE_AUTH_TOKEN convention popularized by actions/setup-node
+    // (e.g. "npmAuthToken: ${NODE_AUTH_TOKEN}" in .yarnrc.yml) was observed
+    // on a real production frontend repo — an anonymous request blew up with
     // "Invalid authentication". Since gh is already signed in, we supply
     // the token from there; harmless if the repo never uses this variable,
     // and works automatically if it does.
@@ -267,4 +286,4 @@ async function dockerUp(config, projectDir) {
   return { ok: true };
 }
 
-module.exports = { cloneRepo, setupEnv, runPostCloneCommands, dockerUp, autoDetect };
+module.exports = { cloneRepo, setupEnv, restoreSecretFiles, runPostCloneCommands, dockerUp, autoDetect };

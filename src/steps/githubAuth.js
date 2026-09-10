@@ -12,10 +12,10 @@ function isAuthenticated() {
 }
 
 // gh's default minimum scope set (repo, read:org, gist) doesn't include
-// GitHub Packages (npm.pkg.github.com) — some Airalo JS repos pull their
+// GitHub Packages (npm.pkg.github.com) — some JS repos pull their
 // dependencies from there as private packages; if the token doesn't have
 // this scope it blows up with "Invalid authentication"/403 permission_denied
-// (observed on a real Airalo frontend repo).
+// (observed on a real production frontend repo).
 function hasPackagesScope() {
   try {
     // "gh auth status" prints its details (including Token scopes) to

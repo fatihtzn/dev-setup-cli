@@ -7,19 +7,31 @@ const { isDryRun } = require('./dryRunState');
 // instead, so the flow can still be shown.
 const MOCK_REPOS = [
   {
-    name: 'web-app',
-    nameWithOwner: 'ornek-org/web-app',
-    description: '(example) matches the override in config/projects.json',
+    name: 'test-web-app',
+    nameWithOwner: 'test-org/test-web-app',
+    description: '(example) no override, generic flow runs',
   },
   {
-    name: 'ornek-servis',
-    nameWithOwner: 'ornek-org/ornek-servis',
+    name: 'test-service',
+    nameWithOwner: 'test-org/test-service',
     description: '(example) no override, generic flow runs',
   },
 ];
 
-// The company's GitHub organization is fixed — not asked from the user.
-const ORG = 'Airalo';
+// Which GitHub org/user to list repos from is not fixed — this tool is
+// meant to be reused by any team. Set the GITHUB_ORG environment variable
+// to skip being asked every run; otherwise it's asked once per run.
+async function resolveOrg() {
+  if (process.env.GITHUB_ORG) return process.env.GITHUB_ORG;
+  const { org } = await prompts({
+    type: 'text',
+    name: 'org',
+    message: 'Which GitHub org or user should this tool list repos from?',
+  });
+  if (!org) process.exit(0);
+  console.log('   (tip: set the GITHUB_ORG environment variable to skip this next time)\n');
+  return org;
+}
 
 // Looks up whether config/projects.json has a special setting for this repo
 // name (e.g. a different docker-compose filename, custom postClone commands).
@@ -35,14 +47,17 @@ function findOverride(repoName) {
 }
 
 async function selectProject() {
-  console.log(`\n🔎 Fetching projects under ${ORG}...`);
   let repos;
+  let org;
   if (isDryRun()) {
-    console.log('🧪 [dry-run] gh repo list not called, using sample repo list instead.');
+    console.log('\n🧪 [dry-run] gh repo list not called, using sample repo list instead.');
     repos = MOCK_REPOS;
+    org = 'test-org';
   } else {
+    org = await resolveOrg();
+    console.log(`\n🔎 Fetching projects under ${org}...`);
     try {
-      repos = listRepos(ORG);
+      repos = listRepos(org);
     } catch (err) {
       console.error('❌ Could not fetch the repo list. Make sure you are signed in to GitHub (gh auth status).');
       throw err;
@@ -50,7 +65,7 @@ async function selectProject() {
   }
 
   if (repos.length === 0) {
-    console.error(`❌ No accessible repos found under "${ORG}".`);
+    console.error(`❌ No accessible repos found under "${org}".`);
     process.exit(1);
   }
 
@@ -63,10 +78,10 @@ async function selectProject() {
       value: r.name,
     })),
     // The prompts library's default filter only matches from the start
-    // (e.g. typing "backend" won't find "airalo-backend"). Since repo names
-    // mostly start with common prefixes (airalo-, nx-, plx-, px-, test-,
-    // ux-, data-...), a case-insensitive substring filter is used here that
-    // matches text ANYWHERE in the repo name/description.
+    // (e.g. typing "backend" won't find "company-backend"). Repo names often
+    // share a common org/product prefix, so a case-insensitive substring
+    // filter is used here that matches text ANYWHERE in the repo
+    // name/description.
     suggest: (input, choices) => {
       const term = input.trim().toLowerCase();
       if (!term) return Promise.resolve(choices);

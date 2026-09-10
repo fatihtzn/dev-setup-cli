@@ -1,37 +1,7 @@
 {
-  "_readme": "The repo list is now fetched automatically from GitHub. Only add an entry to this file when a project needs a special setting that differs from the generic (auto-detected) behavior. Key = must exactly match the GitHub repo name. If secretManager is '1password', op://vault/item/field references inside .env.example are filled in with real values via 'op inject' (the 1Password CLI must be installed and signed in); otherwise .env.example is copied as-is. If healthCheckPort is given, after 'docker compose up' the tool waits until that port starts listening; if not given, the first published port in docker-compose.yml is auto-detected. For projects that don't require Docker, if runCommand is given (e.g. 'npm run start:dev') that command is run in the background after setup; if not given, the dev/start/serve script in package.json is used, then for Laravel projects (if an artisan file exists) 'php artisan serve', and if none of those apply, a safe command (starting with npm/yarn/pnpm) found in README.md. If runPort is given, that port is health-checked directly instead of guessing it from logs. In postCloneCommands auto-detection, 'composer install' is also added if composer.json exists (it can coexist with npm/yarn/pnpm in the same repo).",
-  "Frontend": {
-    "web-app": {
-      "displayName": "Web App (Main Frontend Project)",
-      "postCloneCommands": [
-        "npm install"
-      ],
-      "readyMessage": "Web app is ready! Check it out at http://localhost:3000."
-    },
-    "airalo-partner-panel-frontend": {
-      "displayName": "Airalo Partner Panel (Frontend)",
-      "readyMessage": "Partner Panel is ready! Check it out at http://localhost:5173."
-    }
-  },
-  "Backend": {
-    "test-task": {
-      "displayName": "Test Task (Laravel + Vite demo)",
-      "readyMessage": "Up and running via Docker! Check it out at http://localhost:8080."
-    },
-    "airalo-partner-backend": {
-      "displayName": "Airalo Partner Backend",
-      "requiresDocker": true,
-      "postCloneCommands": [
-        "node -e \"const fs=require('fs');let c=fs.readFileSync('.env','utf8');c=c.replace(/^VIEW_COMPILED_PATH=.*$/m,'VIEW_COMPILED_PATH=/var/www/html/storage/framework/views').replace(/^AWS_SQS_VERSION=.*$/m,'AWS_SQS_VERSION=latest').replace(/^ATTR_EMULATE_PREPARES=.*$/m,'ATTR_EMULATE_PREPARES=true').replace(/^TRANSLATION_DRIVER=.*$/m,'TRANSLATION_DRIVER=database').replace(/^BCRYPT_ROUNDS=.*$/m,'BCRYPT_ROUNDS=10').replace(/^JWT_ALGO=.*$/m,'JWT_ALGO=HS256').replace(/^INTERNAL_HEALTH_CHECK_RATE_LIMIT=.*$/m,'INTERNAL_HEALTH_CHECK_RATE_LIMIT=60').replace(/^INTERNAL_HEALTH_CHECK_TIMEOUT=.*$/m,'INTERNAL_HEALTH_CHECK_TIMEOUT=3000').replace(/^RATE_LIMITER_CACHE_DRIVER=.*$/m,'RATE_LIMITER_CACHE_DRIVER=file');fs.writeFileSync('.env',c);\"",
-        "export COMPOSER_AUTH=\"{\\\"github-oauth\\\":{\\\"github.com\\\":\\\"$(gh auth token)\\\"}}\" && docker compose build --no-cache && docker compose run --rm -e COMPOSER_AUTH php composer install",
-        "docker compose run --rm php php artisan key:generate --force && docker compose run --rm php php artisan jwt:secret --force",
-        "docker compose up -d partners_mysql && until docker compose exec -T partners_mysql mysqladmin ping -h localhost -u root --silent 2>/dev/null; do sleep 2; done && docker compose run --rm php ./artisan migrate:fresh --force",
-        "docker compose run --rm php php artisan passport:install --force",
-        "docker compose run --rm php php artisan db:seed --force"
-      ],
-      "readyMessage": "Docker build + composer install (including private airalo/*) + key:generate + jwt:secret + DB migrate + passport:install + db:seed completed. The app is genuinely running now (713 routes registered, DB/cache/rate-limit working) -- try: curl -H 'Host: partners.airalo.local' http://localhost:8081/internal/v1/health . Because some .env.example fields were empty (VIEW_COMPILED_PATH, AWS_SQS_VERSION, ATTR_EMULATE_PREPARES, TRANSLATION_DRIVER, BCRYPT_ROUNDS, JWT_ALGO, INTERNAL_HEALTH_CHECK_RATE_LIMIT/TIMEOUT, RATE_LIMITER_CACHE_DRIVER -- the last two were set to 'file' since no redis service exists in the compose file) they were auto-filled locally; this is a genuine gap in the real Airalo backend's .env.example, worth reporting to the team. The /internal/v1/health endpoint requires AIRALO_URL (a real Airalo API address), which was left empty since that value is unknown and shouldn't be guessed -- fill it in for the health-check to fully work."
-    }
-  },
+  "_readme": "The repo list is fetched automatically from GitHub (see the GITHUB_ORG env var / prompt). Only add an entry to this file when a project needs a special setting that differs from the generic (auto-detected) behavior. Key = must exactly match the GitHub repo name. If secretManager is '1password', op://vault/item/field references are filled in with real values via 'op inject' (the 1Password CLI must be installed and signed in); otherwise, if nothing is configured, the tool interactively asks how to fill in .env (1Password / copy from a local checkout / skip) every run -- see README.md's Secret Management section for both the static (this file) and dynamic (interactive) paths, and scripts/migrate-env-to-1password.js for pre-populating a 1Password item to use with the static path. By default the op:// references are read from the project's own .env.example -- but that means committing your vault/item layout into the shared team repo. Prefer envTemplateFile instead: a path (relative to THIS tool's repo root, e.g. 'config/env-templates/<repo>.env.tpl') to a template that lives only here, never in the cloned repo. If healthCheckPort is given, after 'docker compose up' the tool waits until that port starts listening; if not given, the first published port in docker-compose.yml is auto-detected. For projects that don't require Docker, if runCommand is given (e.g. 'npm run start:dev') that command is run in the background after setup; if not given, the dev/start/serve script in package.json is used, then for Laravel projects (if an artisan file exists) 'php artisan serve', and if none of those apply, a safe command (starting with npm/yarn/pnpm) found in README.md. If runPort is given, that port is health-checked directly instead of guessing it from logs. In postCloneCommands auto-detection, 'composer install' is also added if composer.json exists (it can coexist with npm/yarn/pnpm in the same repo).",
+  "Frontend": {},
+  "Backend": {},
   "Mobile": {},
   "DevOps": {}
 }

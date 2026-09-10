@@ -8,17 +8,17 @@ Archive.zip
 
 # This tool can clone ANY repo DEFINED in config/projects.json (or in the
 # list auto-fetched from GitHub) — the name isn't fixed. Previously these
-# directories were ignored one by one, by name (airalo-partner-backend/
-# etc.); when a new project is added, or the tool is used to test against
-# some other repo name (exactly what happened here: "ux-frontend-v1.5/" was
-# never added and stayed fully TRACKABLE/commit-able by git), it's easy to
-# forget, and that repo's ENTIRE source code/secrets could accidentally end
-# up in this tool's own (private) repo history. Instead, we ignore EVERY
-# top-level directory by default and only carve out exceptions for the
-# tool's own source code (src/, bin/, config/) and the dependency lock files
-# outside node_modules — so no newly cloned/tested project ever ends up in
-# this repo, and there's no need to remember to update .gitignore.
+# directories were ignored one by one, by name (my-backend-repo/ etc.); when
+# a new project is added, or the tool is used to test against some other
+# repo name that was never added, it's easy to forget, and that repo's
+# ENTIRE source code/secrets could accidentally end up in this tool's own
+# (private) repo history. Instead, we ignore EVERY top-level directory by
+# default and only carve out exceptions for the tool's own source code
+# (src/, bin/, config/, scripts/) and the dependency lock files outside
+# node_modules — so no newly cloned/tested project ever ends up in this
+# repo, and there's no need to remember to update .gitignore.
 /*/
 !/src/
 !/bin/
 !/config/
+!/scripts/

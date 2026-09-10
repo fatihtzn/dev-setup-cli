@@ -3,10 +3,18 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { isDryRun } = require('../dryRunState');
 const { waitForPort } = require('./healthCheck');
-const { getNvmCommandPrefix, getPlatform } = require('../platform');
+const { getNvmCommandPrefix, getPlatform, openUrl } = require('../platform');
 
-// Patterns tried to capture the port in dev server logs (covers the typical
-// output of tools like Vite, Next.js, CRA, Vue CLI, Express/Nest).
+// Tried FIRST: a full URL with scheme (http/https) and any hostname — not
+// just localhost/127.0.0.1/0.0.0.0. Dev servers bound to a custom host
+// (e.g. HOST=my-app.local in .env, common for projects that need HTTPS or
+// a specific cookie domain) print that exact hostname, not "localhost" —
+// matching it here means the port gets detected AND the eventual
+// success/auto-open URL uses the right scheme+host instead of guessing
+// "http://localhost:<port>" and being wrong for such a project.
+const URL_PATTERN = /(https?):\/\/([a-zA-Z0-9.-]+):(\d{2,5})/;
+// Fallback: covers the typical bare "port" output of tools like Vite,
+// Next.js, CRA, Vue CLI, Express/Nest when no full URL was printed.
 const PORT_PATTERNS = [/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})/i, /port[:\s]+(\d{3,5})/i];
 
 // Most common dev server ports to try if the port can't be captured from the log.
@@ -60,7 +68,7 @@ function detectNpmRunScript(projectDir) {
 }
 
 const README_RUN_HEADING_RE =
-  /^#+\s*(getting started|installation|install|setup|kurulum|run|running|development|local development|start|çalıştırma|başlatma)/i;
+  /^#+\s*(getting started|installation|install|setup|run|running|development|local development|start)/i;
 // Only single-line commands that start with a known package manager command
 // and run a "dev/start/serve" script are considered safe and run
 // automatically. Since READMEs aren't written to be run by a machine (they
@@ -165,14 +173,44 @@ function getStopCommand(pid) {
   return getPlatform() === 'windows' ? `taskkill /PID ${pid} /T /F` : `kill -- -${pid}`;
 }
 
-function sniffPortFromLog(logPath) {
+// Name of the small marker file dropped in a project's own directory
+// (alongside .dev-setup-run.log — same convention, never committed to that
+// project's repo) recording the PID of the process group runProject
+// started, so `bin/stop.js` can find and stop it later without the user
+// having to remember or copy a raw `kill -- -<pid>` command out of old
+// terminal scrollback.
+const PID_FILE_NAME = '.dev-setup-cli.pid.json';
+
+function writePidFile(projectDir, pid, command) {
+  try {
+    fs.writeFileSync(
+      path.join(projectDir, PID_FILE_NAME),
+      JSON.stringify({ pid, command, startedAt: new Date().toISOString() }, null, 2)
+    );
+  } catch {
+    // Non-fatal — worst case `bin/stop.js` won't find this one, the raw
+    // kill command printed below still works.
+  }
+}
+
+// Returns { port, url } — url is the exact string the dev server itself
+// printed (correct scheme/host) when URL_PATTERN matched, null when only a
+// bare port number could be found (PORT_PATTERNS fallback).
+function sniffFromLog(logPath) {
   if (!fs.existsSync(logPath)) return null;
   const content = fs.readFileSync(logPath, 'utf-8');
+
+  const urlMatch = content.match(URL_PATTERN);
+  if (urlMatch) {
+    const port = parseInt(urlMatch[3], 10);
+    if (!Number.isNaN(port)) return { port, url: `${urlMatch[1]}://${urlMatch[2]}:${port}` };
+  }
+
   for (const re of PORT_PATTERNS) {
     const match = content.match(re);
     if (match) {
       const port = parseInt(match[1], 10);
-      if (!Number.isNaN(port)) return port;
+      if (!Number.isNaN(port)) return { port, url: null };
     }
   }
   return null;
@@ -188,23 +226,25 @@ async function snapshotOpenPorts(ports) {
   return new Set(ports.filter((_, i) => results[i].ok));
 }
 
-// Checks config.runPort first, then the port captured from log output, and
-// if that's not there either, the first of the most common dev server
-// ports that was CLOSED before spawn and later opened (all best-effort).
+// Checks config.runPort first, then the port (and, if available, the exact
+// URL) captured from log output, and if that's not there either, the first
+// of the most common dev server ports that was CLOSED before spawn and
+// later opened (all best-effort). Always returns { port, url } (url is null
+// unless a full URL was sniffed from the log) or null if nothing was found.
 async function detectPort(config, logPath, preOpenPorts, { sniffTimeoutMs = 15000, sniffIntervalMs = 1000 } = {}) {
-  if (config.runPort) return config.runPort;
+  if (config.runPort) return { port: config.runPort, url: null };
 
   const start = Date.now();
   while (Date.now() - start < sniffTimeoutMs) {
-    const port = sniffPortFromLog(logPath);
-    if (port) return port;
+    const found = sniffFromLog(logPath);
+    if (found) return found;
     await new Promise((resolve) => setTimeout(resolve, sniffIntervalMs));
   }
 
   for (const port of COMMON_DEV_PORTS) {
     if (preOpenPorts.has(port)) continue;
     const result = await waitForPort(port, { timeoutMs: 1500, intervalMs: 500 });
-    if (result.ok) return port;
+    if (result.ok) return { port, url: null };
   }
 
   return null;
@@ -214,8 +254,15 @@ async function detectPort(config, logPath, preOpenPorts, { sniffTimeoutMs = 1500
 // the dev server in the background (detached), detects its port, and waits
 // until it starts listening — the goal is to reflect the running project
 // (as a URL) on screen without any manual intervention beyond the tool.
+// Returns { ok, skipped?, reason? } so the caller (bin/setup.js) can tell a
+// genuinely confirmed-running dev server apart from "we don't know how to
+// start this" or "it started but we couldn't confirm it's reachable" —
+// without this, the final "🎉 Setup complete" message printed unconditionally
+// even when the dev server had visibly failed to start (observed directly:
+// an HTTPS project missing its cert file crashed on every start, yet the
+// tool still reported success because only Docker's status was checked).
 async function runProject(config, projectDir) {
-  if (config.requiresDocker) return; // dockerUp already handles this case
+  if (config.requiresDocker) return { ok: true, skipped: true }; // dockerUp already handles this case
 
   const detected = detectRunCommand(config, projectDir);
 
@@ -230,14 +277,14 @@ async function runProject(config, projectDir) {
         '\nℹ️  No automatic start command found for this project (via config override, package.json script, or README.md). You may need to check README.md.'
       );
     }
-    return;
+    return { ok: true, skipped: true, reason: 'no-command' };
   }
 
   const { command, source } = detected;
 
   if (isDryRun()) {
     console.log(`🧪 [dry-run] Project would have been started (${source}): ${command}`);
-    return;
+    return { ok: true, simulated: true };
   }
 
   console.log(`\n🚀 Starting project (${source}): ${command}`);
@@ -285,28 +332,42 @@ async function runProject(config, projectDir) {
     console.log(
       `⚠️  Could not run "${cmd}" (it may not be installed): ${spawnResult.error.message}`
     );
-    return;
+    return { ok: false, reason: 'spawn-failed' };
   }
 
-  console.log(`⏳ Waiting for the service to come up (logs: ${logPath})...`);
-  const port = await detectPort(config, logPath, preOpenPorts);
+  writePidFile(projectDir, child.pid, command);
+  const stopHint = `To stop it: node bin/stop.js ${path.basename(projectDir)}   (or manually: ${getStopCommand(child.pid)})`;
 
-  if (!port) {
+  console.log(`⏳ Waiting for the service to come up (logs: ${logPath})...`);
+  const detectedPort = await detectPort(config, logPath, preOpenPorts);
+
+  if (!detectedPort) {
     console.log(
       `⚠️  Process started in the background (PID: ${child.pid}) but could not detect which port it's listening on. Check the logs: ${logPath}`
     );
-    console.log(`   To stop it: ${getStopCommand(child.pid)}`);
-    return;
+    console.log(`   ${stopHint}`);
+    return { ok: false, reason: 'port-not-detected' };
   }
 
+  const { port, url: sniffedUrl } = detectedPort;
   const result = await waitForPort(port, { timeoutMs: 60000 });
+  // Prefer the exact URL the dev server itself printed (correct scheme and
+  // hostname — e.g. a project bound to a custom HTTPS host) over guessing
+  // "http://localhost:<port>", which would be wrong for such a project.
+  const url = sniffedUrl || `http://localhost:${port}`;
+
   if (result.ok) {
-    console.log(`✅ Project is running: http://localhost:${port} (PID: ${child.pid})`);
-    console.log(`   To stop it: ${getStopCommand(child.pid)}   (logs: ${logPath})`);
-  } else {
-    console.log(`⚠️  Could not connect to localhost:${port}. Process PID: ${child.pid}, logs: ${logPath}`);
-    console.log(`   To stop it: ${getStopCommand(child.pid)}`);
+    console.log(`✅ Project is running: ${url} (PID: ${child.pid})`);
+    console.log(`   ${stopHint}   (logs: ${logPath})`);
+    if (openUrl(url)) {
+      console.log('🌐 Opened in your browser.');
+    }
+    return { ok: true };
   }
+
+  console.log(`⚠️  Could not connect to ${url}. Process PID: ${child.pid}, logs: ${logPath}`);
+  console.log(`   ${stopHint}`);
+  return { ok: false, reason: 'unreachable' };
 }
 
 module.exports = {
@@ -315,4 +376,6 @@ module.exports = {
   detectNpmRunScript,
   detectArtisanRunCommand,
   detectReadmeRunCommand,
+  PID_FILE_NAME,
+  getStopCommand,
 };

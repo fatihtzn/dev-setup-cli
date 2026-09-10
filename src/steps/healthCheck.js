@@ -20,7 +20,13 @@ function checkPortOnce(port, host, timeoutMs) {
 }
 
 // Retries at fixed intervals until the port is ready, up to the timeout.
-async function waitForPort(port, { host = 'localhost', timeoutMs = 90000, intervalMs = 1500 } = {}) {
+// host defaults to the IPv4 loopback address, not the "localhost" NAME:
+// Node's DNS resolver can return "localhost" as IPv6 (::1) first (observed
+// directly on a real Mac: `dns.lookup('localhost')` -> ::1), and a dev
+// server bound only to the IPv4 interface (the common case) then never
+// accepts that connection — the health check times out and reports the
+// service as down even though it's genuinely up and reachable at 127.0.0.1.
+async function waitForPort(port, { host = '127.0.0.1', timeoutMs = 90000, intervalMs = 1500 } = {}) {
   const start = Date.now();
   do {
     const ok = await checkPortOnce(port, host, Math.min(intervalMs, 2000));

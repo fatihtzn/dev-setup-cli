@@ -33,6 +33,11 @@ const REQUIRED_TOOLS = [
     kind: 'install',
     installHint: { macos: 'brew install --cask docker', windows: 'winget install Docker.DockerDesktop' },
   },
+  {
+    cmd: 'op',
+    kind: 'install',
+    installHint: { macos: 'brew install 1password-cli', windows: 'winget install AgileBits.1Password-CLI' },
+  },
 ];
 
 // If Docker Desktop is installed but not running, "open and wait" handles
@@ -88,12 +93,25 @@ async function attemptAutoFix(tool, platform) {
   }
 }
 
+// Installs just the 1Password CLI on its own, outside the normal
+// checkPrerequisites flow — used by the dynamic secret-resolution prompt
+// (src/steps/dynamicSecrets.js), which only learns a project needs 1Password
+// interactively, after the usual up-front prerequisite check already ran.
+// Reuses the same install command as the REQUIRED_TOOLS entry above so
+// there's one source of truth for it.
+async function installOp() {
+  const platform = getPlatform();
+  const opTool = REQUIRED_TOOLS.find((t) => t.cmd === 'op');
+  return attemptAutoFix(opTool, platform);
+}
+
 async function checkPrerequisites(config) {
   const platform = getPlatform();
   const missing = [];
 
   for (const tool of REQUIRED_TOOLS) {
     if (tool.cmd === 'docker' && !config.requiresDocker) continue;
+    if (tool.cmd === 'op' && config.secretManager !== '1password') continue;
     if (!commandExists(tool.cmd)) {
       missing.push(tool);
     }
@@ -201,4 +219,4 @@ async function checkPrerequisites(config) {
   return { ok: true, warnings };
 }
 
-module.exports = { checkPrerequisites };
+module.exports = { checkPrerequisites, installOp };

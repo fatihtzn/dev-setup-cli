@@ -102,9 +102,9 @@ function getNvmCommandPrefix(projectDir) {
   // bootstrap.sh/.ps1 only installs git/node/gh, it NEVER installs nvm — so
   // on a fresh machine set up by our own tool (via brew/winget), nvm.sh
   // can't be found, this function used to silently return empty, and
-  // .nvmrc effectively appeared to be ignored (observed on a real Airalo
-  // project/VM — the pinned .nvmrc version never kicked in because nvm
-  // wasn't installed at all). If nvm isn't installed, the command itself
+  // .nvmrc effectively appeared to be ignored (observed on a real project/VM
+  // — the pinned .nvmrc version never kicked in because nvm wasn't installed
+  // at all). If nvm isn't installed, the command itself
   // (on the machine it runs on) installs nvm first via the official install
   // script.
   //
@@ -217,10 +217,34 @@ function checkWsl2Status() {
   }
 }
 
+// Opens a URL in the user's default browser. Uses the OS's own "open a URL"
+// command directly (not `run`, which routes through bash on Windows for
+// POSIX script syntax — unnecessary indirection here since this is a single
+// native command per OS, and Windows' "start" is a cmd.exe builtin, not
+// something bash.exe would even have).
+function openUrl(url) {
+  const platform = getPlatform();
+  try {
+    if (platform === 'macos') {
+      execFileSync('open', [url], { stdio: 'ignore' });
+    } else if (platform === 'windows') {
+      // The empty "" first argument is the window title `start` expects
+      // when the target itself is quoted.
+      execSync(`start "" "${url}"`, { stdio: 'ignore' });
+    } else {
+      execFileSync('xdg-open', [url], { stdio: 'ignore' });
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 module.exports = {
   getPlatform,
   commandExists,
   run,
+  openUrl,
   checkWsl2Status,
   isDockerDaemonRunning,
   isDockerComposeAvailable,
