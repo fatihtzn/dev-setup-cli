@@ -8,22 +8,24 @@
 //   - item: "[dev-setup-cli] <repo-name>", one field per env var (field
 //     id/label = exact env var name), extra files as "file__<name>" fields
 //
-// This is the OPTIONAL, pre-configured path: run this once, then wire the
-// resulting item into config/projects.json (secretManager/envTemplateFile/
-// secretFiles) so a fresh clone never has to be asked interactively. If you'd
-// rather not maintain that, the tool also has a built-in interactive fallback
-// (1Password / local copy / skip) that needs no setup at all — see README.md.
-//
-// After running this, see README.md's convention for the remaining manual
-// steps: resolve the item's UUID, write config/env-templates/<repo>.env.tpl
-// with op:// references using that UUID, and add a projects.json entry.
+// Running this alone is often ENOUGH: the tool's dynamic secret-resolution
+// flow (src/steps/dynamicSecrets.js) auto-discovers an item titled exactly
+// "[dev-setup-cli] <repo-name>" across every vault the user has access to,
+// with no config/projects.json entry needed. Only bother writing a static
+// config/env-templates/<repo>.env.tpl + projects.json entry (see README.md's
+// Secret Management section) if you specifically want the fully
+// pre-configured, zero-prompt path instead of the one-question dynamic flow.
 //
 // Usage:
 //   node scripts/migrate-env-to-1password.js \
 //     --vault <vault-name-or-id> \
 //     --repo <repo-name> \
 //     --env-dir /path/to/a/working/local/checkout \
+//     [--source-env-file .env.development.local] \
 //     [--file some.cert --file some.key ...]
+// --source-env-file defaults to ".env" -- set it when the project's real,
+// currently-working values live in a different file (e.g. a Vite project
+// where .env.<mode>.local is what's actually loaded for local dev).
 //
 // Safety notes (all learned the hard way, see the inline comments below for
 // what actually broke and why):
@@ -46,7 +48,14 @@ function parseArgs(argv) {
     if (a === '--vault') args.vault = argv[++i];
     else if (a === '--repo') args.repo = argv[++i];
     else if (a === '--env-dir') args.envDir = argv[++i];
-    else if (a === '--env-file') args.envFile = argv[++i];
+    // NOT named "--env-file" -- that collides with Node's own native
+    // --env-file flag (added in Node 20.6+), which node's CLI parser
+    // intercepts itself no matter where it appears in argv, even after the
+    // script path. It silently swallows the value and tries (and fails) to
+    // load it as a dotenv file relative to cwd, and this script never even
+    // sees the flag (confirmed directly: "node: .env.development.local: not
+    // found", exit code 9 -- that error is Node's own, not this script's).
+    else if (a === '--source-env-file') args.envFile = argv[++i];
     else if (a === '--file') args.files.push(argv[++i]);
   }
   return args;
@@ -93,7 +102,8 @@ function findItemIdByTitle(vault, title) {
 // landed -- confirmed by re-fetching the item afterward. The exact same JSON
 // piped from a file via a plain shell (`cat file | op ...`) worked every
 // time, so whatever's broken is specific to spawnSync's `input:` handling
-// for this binary, not the content.
+// for this binary, not the content. Used for `op item edit`, whose stdin
+// handling works correctly with this approach.
 function runOpWithJsonStdin(args, jsonBody) {
   const tmpFile = path.join(os.tmpdir(), `op-item-${Date.now()}-${process.pid}.json`);
   fs.writeFileSync(tmpFile, JSON.stringify(jsonBody), { mode: 0o600 });
@@ -104,6 +114,26 @@ function runOpWithJsonStdin(args, jsonBody) {
     } finally {
       fs.closeSync(fd);
     }
+  } finally {
+    fs.unlinkSync(tmpFile);
+  }
+}
+
+// `op item create`'s stdin/piped-template handling is broken in this CLI
+// version -- confirmed directly, in plain bash with no Node involved at
+// all: `op item create --vault <v> --category "Secure Note" - < file.json`
+// (and the same with `<` swapped for `|`, and with/without the trailing
+// `-`) always produces a blank "Untitled SecureNote" item with none of the
+// template's title/fields applied, silently (exit 0). The exact same
+// template via `--template=<path>` instead works correctly every time. So
+// CREATE uses --template (only the file PATH becomes a CLI arg -- the
+// secret values inside it never do), while EDIT above keeps using stdin,
+// which works fine there.
+function runOpWithTemplateFile(args, jsonBody) {
+  const tmpFile = path.join(os.tmpdir(), `op-item-${Date.now()}-${process.pid}.json`);
+  fs.writeFileSync(tmpFile, JSON.stringify(jsonBody), { mode: 0o600 });
+  try {
+    return spawnSync('op', [...args, `--template=${tmpFile}`], { encoding: 'utf8' });
   } finally {
     fs.unlinkSync(tmpFile);
   }
@@ -145,11 +175,13 @@ function main() {
     // parsed as a no-op assignment instead of "read stdin").
     result = runOpWithJsonStdin(['item', 'edit', existingId, '--vault', vault], { title, sections, fields });
   } else {
-    // `item create` DOES need the trailing '-' (unlike edit), and the
-    // category must be given ONLY via --category, never also in the JSON
-    // body, or the whole template silently gets dropped.
-    result = runOpWithJsonStdin(
-      ['item', 'create', '--vault', vault, '--category', 'Secure Note', '-'],
+    // See runOpWithTemplateFile's comment -- `item create` needs
+    // --template=<file>, not stdin. category must still be given ONLY via
+    // --category, never also in the JSON body, or the whole template
+    // silently gets dropped (the earlier, separate bug this avoided before
+    // the stdin one was found).
+    result = runOpWithTemplateFile(
+      ['item', 'create', '--vault', vault, '--category', 'Secure Note'],
       { title, sections, fields }
     );
   }
@@ -163,8 +195,10 @@ function main() {
   console.log(`OK: ${existingId ? 'updated' : 'created'} item ${itemId} ("${title}") in vault ${vault}`);
   console.log(`Env fields: ${[...envMap.keys()].join(', ')}`);
   if (files.length) console.log(`File fields: ${files.map((f) => `file__${f.replace(/\./g, '_')}`).join(', ')}`);
-  console.log(`\nNext: write config/env-templates/${repo}.env.tpl with op://${vault}/${itemId}/<FIELD> references,`);
-  console.log(`then add a "${repo}" entry to config/projects.json (see README.md's Secret Management section).`);
+  console.log(
+    `\nDone — the dynamic secret flow will now auto-discover this item for "${repo}" with no further setup. ` +
+      `(Optional: write config/env-templates/${repo}.env.tpl with op://${vault}/${itemId}/<FIELD> refs + a projects.json entry for the fully pre-configured path instead — see README.md.)`
+  );
 }
 
 main();
