@@ -11,23 +11,44 @@ function isAuthenticated() {
   }
 }
 
-// gh's default minimum scope set (repo, read:org, gist) doesn't include
-// GitHub Packages (npm.pkg.github.com) — some JS repos pull their
-// dependencies from there as private packages; if the token doesn't have
-// this scope it blows up with "Invalid authentication"/403 permission_denied
-// (observed on a real production frontend repo).
-function hasPackagesScope() {
+// "gh auth status" prints its details (including Token scopes) to stderr,
+// not stdout, so both streams are captured.
+function currentScopes() {
   try {
-    // "gh auth status" prints its details (including Token scopes) to
-    // stderr, not stdout, so we capture both.
-    const status = execSync('gh auth status 2>&1', { encoding: 'utf-8' });
-    return status.includes('read:packages');
+    return execSync('gh auth status 2>&1', { encoding: 'utf-8' });
   } catch {
-    return false;
+    return '';
   }
 }
 
-function githubAuth() {
+// gh's default minimum scope set (repo, read:org, gist) doesn't cover
+// everything every project needs — GitHub Packages (npm.pkg.github.com)
+// needs read:packages (some JS repos pull private dependencies from there;
+// observed on a real production frontend repo as "Invalid
+// authentication"/403 permission_denied), and native iOS projects that
+// download private Swift packages via Xcode need admin:public_key,
+// write:discussion, and user (see the project's own README) — Xcode itself
+// requires admin:public_key even though it's not one of the ones this tool
+// requests here since it's already part of gh's own default scope set.
+// `gh auth refresh --scopes` is additive (expands the existing token's
+// scopes, confirmed directly: repeated calls with different scope lists
+// accumulate rather than replace), so this only needs to request whatever's
+// still missing from the FULL desired set, not the whole thing every time.
+async function ensureScopes(scopes, reason) {
+  if (isDryRun()) {
+    console.log(`🧪 [dry-run] would ensure GitHub token scopes for ${reason}: ${scopes.join(', ')}`);
+    return;
+  }
+
+  const status = currentScopes();
+  const missing = scopes.filter((s) => !status.includes(s));
+  if (missing.length === 0) return;
+
+  console.log(`\n🔐 Adding GitHub token permission(s) for ${reason}: ${missing.join(', ')}...\n`);
+  run(`gh auth refresh --hostname github.com --scopes ${missing.join(',')}`);
+}
+
+async function githubAuth() {
   if (isDryRun()) {
     console.log('🧪 [dry-run] gh auth login skipped (no real GitHub sign-in will happen).');
     return;
@@ -44,10 +65,7 @@ function githubAuth() {
     run('gh config set -h github.com git_protocol https');
   }
 
-  if (!hasPackagesScope()) {
-    console.log('\n🔐 Adding read:packages permission for GitHub Packages (private npm/composer packages)...\n');
-    run('gh auth refresh --hostname github.com --scopes read:packages');
-  }
+  await ensureScopes(['read:packages'], 'GitHub Packages (private npm/composer packages)');
 }
 
-module.exports = { githubAuth };
+module.exports = { githubAuth, ensureScopes };

@@ -18,6 +18,7 @@ It's written for two audiences:
   - [Brand new machine (nothing installed yet)](#brand-new-machine-nothing-installed-yet)
   - [git / node / gh already installed](#git--node--gh-already-installed)
 - [What Happens When You Run It](#what-happens-when-you-run-it)
+  - [Xcode projects (iOS/macOS apps)](#xcode-projects-iosmacos-apps)
 - [Troubleshooting](#troubleshooting)
 - [For Developers](#for-developers)
   - [Dry-run mode](#dry-run-mode)
@@ -127,6 +128,30 @@ that needs a manual look at the end.
 **Stopping a project**: `node bin/stop.js <project-name>` (or with no
 argument, stops every project this tool has running in the current
 directory) — no need to hunt down or copy a PID from old terminal output.
+
+### Xcode projects (iOS/macOS apps)
+
+Detected automatically — an `.xcodeproj`/`.xcworkspace` at the cloned repo's
+root, no config needed. There's no CLI dev server for a native app, so this
+replaces steps 5-8 above with:
+1. Checks Xcode is actually installed (not just the Command Line Tools,
+   which can be present with no Xcode.app at all — `xcodebuild -version`
+   is what's actually checked) and that Git LFS is installed, auto-installing
+   Git LFS via brew/winget if it's missing. Xcode itself can't be
+   auto-installed (no CLI one-liner downloads it from the App Store), so a
+   missing Xcode just gets printed as something to install and re-run for.
+2. Requests the extra GitHub token scopes a private-Swift-package Xcode
+   project needs (`write:discussion`, `user`) beyond what every project
+   gets (`read:packages`) — this needs your approval in the browser, same as
+   the initial sign-in.
+3. Offers to add that token to your macOS Keychain for `api.github.com`
+   (asks first — this is the one step here that touches a system credential
+   store) — exactly the manual step most iOS project READMEs walk through
+   by hand, done from the CLI instead.
+4. Runs `git lfs install` + `git lfs pull`, and the repo's own git-hooks
+   setup script if it has one (e.g. `Scripts/setup-git-hooks.sh`).
+5. Prints the `open <name>.xcodeproj` command — pick a scheme in Xcode and
+   ⌘B to build; that part's still Xcode's own GUI, nothing to script there.
 
 ---
 

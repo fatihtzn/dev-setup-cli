@@ -1,4 +1,5 @@
 const prompts = require('prompts');
+const { execFileSync } = require('child_process');
 const {
   commandExists,
   getPlatform,
@@ -38,7 +39,23 @@ const REQUIRED_TOOLS = [
     kind: 'install',
     installHint: { macos: 'brew install 1password-cli', windows: 'winget install AgileBits.1Password-CLI' },
   },
+  {
+    // Binary name is "git-lfs"; it's invoked as a git subcommand ("git
+    // lfs ..."), but the thing that needs to be ON PATH is this binary.
+    cmd: 'git-lfs',
+    kind: 'install',
+    installHint: { macos: 'brew install git-lfs', windows: 'winget install GitHub.GitLFS' },
+  },
 ];
+
+function isXcodeFullyInstalled() {
+  try {
+    execFileSync('xcodebuild', ['-version'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // If Docker Desktop is installed but not running, "open and wait" handles
 // it — this is not the same as "install" (it doesn't put anything on the
@@ -81,6 +98,9 @@ async function attemptAutoFix(tool, platform) {
   if (tool.kind === 'fix-compose-plugin') {
     return fixDockerComposePlugin();
   }
+  if (tool.kind === 'manual') {
+    return false; // never auto-fixable — falls straight to the "handle it yourself" list
+  }
 
   const cmd = tool.installHint[platform] || tool.installHint.macos;
   console.log(`\n📦 Installing ${tool.cmd}: ${cmd}`);
@@ -112,9 +132,27 @@ async function checkPrerequisites(config) {
   for (const tool of REQUIRED_TOOLS) {
     if (tool.cmd === 'docker' && !config.requiresDocker) continue;
     if (tool.cmd === 'op' && config.secretManager !== '1password') continue;
+    if (tool.cmd === 'git-lfs' && !config.requiresXcode) continue;
     if (!commandExists(tool.cmd)) {
       missing.push(tool);
     }
+  }
+
+  // xcodebuild is ON PATH via the Command Line Tools even with no full
+  // Xcode.app installed at all — commandExists() alone would wrongly call
+  // that "installed" (confirmed directly: `command -v xcodebuild` succeeds,
+  // `xcodebuild -version` fails with "requires Xcode" when only CLT is
+  // active). No brew/winget one-liner can install the real thing, so this
+  // is a manual-only check, same idea as the docker-daemon one below.
+  if (config.requiresXcode && !isXcodeFullyInstalled()) {
+    missing.push({
+      cmd: 'Xcode (full app)',
+      kind: 'manual',
+      installHint: {
+        macos: 'Install Xcode from the App Store, open it once to accept the license, then re-run this tool',
+        windows: 'Xcode is macOS-only — this project can only be built on a Mac',
+      },
+    });
   }
 
   // Even if the docker CLI is on PATH, if Docker Desktop is off, every docker
@@ -219,4 +257,4 @@ async function checkPrerequisites(config) {
   return { ok: true, warnings };
 }
 
-module.exports = { checkPrerequisites, installOp };
+module.exports = { checkPrerequisites, installOp, isXcodeFullyInstalled };

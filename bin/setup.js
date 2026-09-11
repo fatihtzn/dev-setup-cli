@@ -15,6 +15,7 @@ const {
 } = require('../src/steps/setupProject');
 const { runProject } = require('../src/steps/runProject');
 const { ensureHostsEntry } = require('../src/steps/hostsFile');
+const { detectXcodeProject, setupXcodeProject } = require('../src/steps/iosSetup');
 const { setDryRun, isDryRun } = require('../src/dryRunState');
 
 function parseArgs(argv) {
@@ -37,13 +38,28 @@ async function main() {
   // GitHub/Okta sign-in is required first, so the repo list can be fetched.
   const prereq = await checkPrerequisites({ requiresDocker: false });
   if (!prereq.ok) process.exit(1);
-  githubAuth();
+  await githubAuth();
 
   const { projectKey, config: initialConfig } = await selectProject();
   console.log(`\n➡️  Selected: ${initialConfig.displayName}\n`);
 
   const targetDir = path.join(process.cwd(), projectKey);
   cloneRepo(initialConfig, targetDir);
+
+  // A native Xcode project (iOS/macOS app) builds and runs entirely through
+  // Xcode's own GUI — none of the .env/dev-server machinery below applies,
+  // so it gets its own short, separate flow instead.
+  if (!isDryRun() && detectXcodeProject(targetDir)) {
+    const config = { ...initialConfig, requiresXcode: true };
+    const prereqCheck = await checkPrerequisites(config);
+    const xcodeStillMissing = (prereqCheck.missing || []).some((t) => t.cmd === 'Xcode (full app)');
+    if (xcodeStillMissing) {
+      console.log('\n⚠️  Xcode itself still needs to be installed before this project can be built — re-run once it is.\n');
+    }
+    await setupXcodeProject(targetDir);
+    console.log(`\n🎉 ${initialConfig.readyMessage || 'Setup complete — open the project in Xcode to start coding!'}\n`);
+    return;
+  }
 
   // Once the repo is cloned, docker-compose / package manager are auto-detected
   // (if config/projects.json defines a special setting for this project, that takes priority).
