@@ -53,11 +53,20 @@ async function main() {
     const config = { ...initialConfig, requiresXcode: true };
     const prereqCheck = await checkPrerequisites(config);
     const xcodeStillMissing = (prereqCheck.missing || []).some((t) => t.cmd === 'Xcode (full app)');
-    if (xcodeStillMissing) {
-      console.log('\n⚠️  Xcode itself still needs to be installed before this project can be built — re-run once it is.\n');
-    }
+    // Everything else here (Keychain, LFS, hooks) is independently useful
+    // even without Xcode installed yet — running it now means the project
+    // is ready to build the moment Xcode is — but the final message must
+    // NOT say "complete" in that case, or it reads as a false all-clear
+    // (observed directly: it printed "🎉 Setup complete" right after
+    // warning Xcode itself was still missing, which is exactly backwards).
     await setupXcodeProject(targetDir);
-    console.log(`\n🎉 ${initialConfig.readyMessage || 'Setup complete — open the project in Xcode to start coding!'}\n`);
+    if (xcodeStillMissing) {
+      console.log(
+        '\n⚠️  Everything else is ready, but Xcode itself still needs to be installed before this project can actually be built — install it from the App Store, open it once to accept the license, then open the project.\n'
+      );
+    } else {
+      console.log(`\n🎉 ${initialConfig.readyMessage || 'Setup complete — open the project in Xcode to start coding!'}\n`);
+    }
     return;
   }
 
