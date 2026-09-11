@@ -57,6 +57,57 @@ function isXcodeFullyInstalled() {
   }
 }
 
+// Xcode's real App Store listing ID (confirmed via `mas info 497799835` ->
+// "App: Xcode"), used with the Mac App Store CLI (`mas`) below.
+const XCODE_APP_STORE_ID = '497799835';
+
+// Auto-installs Xcode via `mas` (the Mac App Store CLI) if the machine is
+// already signed in to the App Store — confirmed directly this works
+// end-to-end: `mas` itself is brew-installable, and once signed in,
+// `mas install <id>` downloads and installs an app with no further
+// credential entry. It's a large download (~2.35GB for Xcode) and can take
+// a while; `mas install` may also prompt for the account's sudo password
+// partway through (observed directly) — that's fine when this tool is run
+// in a real interactive terminal (the whole point of "may ask for your
+// admin password" in the confirm prompt above), just not from a
+// non-interactive context with no TTY to answer it.
+async function installXcodeViaMas() {
+  if (getPlatform() !== 'macos') return false;
+
+  if (!commandExists('mas')) {
+    console.log('\n📦 Installing mas (Mac App Store CLI): brew install mas');
+    try {
+      run('brew install mas');
+    } catch (err) {
+      console.log(`⚠️  Could not install mas: ${err.message}`);
+      return false;
+    }
+  }
+
+  console.log('\n📦 Installing Xcode via the Mac App Store (mas install) — ~2.35GB, this will take a while...');
+  try {
+    run(`mas install ${XCODE_APP_STORE_ID}`);
+  } catch (err) {
+    console.log(`⚠️  \`mas install\` failed: ${err.message}`);
+    console.log('   This usually means the Mac isn\'t signed in to the App Store yet — sign in via the App Store app, then re-run.');
+    return false;
+  }
+
+  // A fresh Xcode install still needs its license accepted before
+  // xcodebuild will run at all; -license accept does that non-interactively
+  // (needs sudo, but the credential prompt from the mas install above is
+  // still cached for a few minutes in a real terminal, so this usually
+  // doesn't prompt again). Non-fatal if it fails — the first manual launch
+  // of Xcode.app accepts the license too.
+  try {
+    run('sudo xcodebuild -license accept', { stdio: 'ignore' });
+  } catch {
+    console.log('ℹ️  Could not auto-accept the Xcode license — open Xcode.app once by hand to accept it.');
+  }
+
+  return isXcodeFullyInstalled();
+}
+
 // If Docker Desktop is installed but not running, "open and wait" handles
 // it — this is not the same as "install" (it doesn't put anything on the
 // system, it just starts an already-installed app), hence the separate
@@ -101,6 +152,9 @@ async function attemptAutoFix(tool, platform) {
   if (tool.kind === 'manual') {
     return false; // never auto-fixable — falls straight to the "handle it yourself" list
   }
+  if (tool.kind === 'xcode-install') {
+    return installXcodeViaMas();
+  }
 
   const cmd = tool.installHint[platform] || tool.installHint.macos;
   console.log(`\n📦 Installing ${tool.cmd}: ${cmd}`);
@@ -142,12 +196,14 @@ async function checkPrerequisites(config) {
   // Xcode.app installed at all — commandExists() alone would wrongly call
   // that "installed" (confirmed directly: `command -v xcodebuild` succeeds,
   // `xcodebuild -version` fails with "requires Xcode" when only CLT is
-  // active). No brew/winget one-liner can install the real thing, so this
-  // is a manual-only check, same idea as the docker-daemon one below.
+  // active). Auto-fixable IF the Mac is already signed in to the App Store
+  // (via `mas`, see installXcodeViaMas) — falls back to the manual
+  // instructions below when it isn't, same idea as the docker-daemon check
+  // further down.
   if (config.requiresXcode && !isXcodeFullyInstalled()) {
     missing.push({
       cmd: 'Xcode (full app)',
-      kind: 'manual',
+      kind: 'xcode-install',
       installHint: {
         macos: 'Install Xcode from the App Store, open it once to accept the license, then re-run this tool',
         windows: 'Xcode is macOS-only — this project can only be built on a Mac',

@@ -137,9 +137,13 @@ replaces steps 5-8 above with:
 1. Checks Xcode is actually installed (not just the Command Line Tools,
    which can be present with no Xcode.app at all — `xcodebuild -version`
    is what's actually checked) and that Git LFS is installed, auto-installing
-   Git LFS via brew/winget if it's missing. Xcode itself can't be
-   auto-installed (no CLI one-liner downloads it from the App Store), so a
-   missing Xcode just gets printed as something to install and re-run for.
+   Git LFS via brew/winget if it's missing. If Xcode itself is missing, it's
+   auto-installed too via `mas` (the Mac App Store CLI — installed via brew
+   if needed) as long as this Mac is already signed in to the App Store; a
+   ~2.35GB download, so it can take a while, and it may prompt for your
+   admin password partway through (only works when run in a real
+   interactive terminal, for the same reason). If the Mac isn't signed in
+   yet, this falls back to printing manual install instructions instead.
 2. Requests the extra GitHub token scopes a private-Swift-package Xcode
    project needs (`write:discussion`, `user`) beyond what every project
    gets (`read:packages`) — this needs your approval in the browser, same as
