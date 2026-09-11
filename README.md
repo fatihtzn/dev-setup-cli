@@ -309,23 +309,26 @@ If a project has no `secretManager` configured in `config/projects.json` at
 all (the default — the shipped `projects.json` starts empty), the tool asks,
 every time it sets up that project:
 
-1. **Pull values from 1Password** — first looks for an item titled
+1. **Copy from a working local checkout** (the default — plain Enter picks
+   it) — asks for a path to a directory (or a file directly); copies its
+   `.env`, then asks for any extra filenames to copy alongside it from the
+   same place. Fastest option when you already have a working checkout
+   somewhere and nothing needs setting up first.
+2. **Pull values from 1Password** — first looks for an item titled
    `[dev-setup-cli] <repo-name>` across every vault you have access to (see
    the naming convention below); if one already exists, it's used
-   automatically with **no vault/item prompt at all**. Otherwise asks for a
-   vault and item (name or ID) — worth setting up that pre-configured item
-   once so every future clone of the same project skips straight past this.
-   Either way, it then reads the item's field *names* (never values) via
-   `op item get`, and for every `KEY=` line in the project's `.env.example`
-   whose key matches a field name on that item, swaps in a real `op://`
-   reference; anything without a matching field is left as the example's own
-   default. Then asks once for any extra non-`.env` files to restore (see
-   the `file__` field convention below). If the 1Password CLI isn't
-   installed or authorized yet, it offers to install it and walks through
-   the one-time-per-machine authorization step (see below).
-2. **Copy from a working local checkout** — asks for a path to a directory
-   (or a file directly); copies its `.env`, then asks for any extra
-   filenames to copy alongside it from the same place.
+   automatically with **no vault/item prompt, and no extra-files prompt
+   either** — every `file__*` field on that item (certs, keys, ...) is
+   restored automatically too. Otherwise asks for a vault and item (name or
+   ID) — worth setting up that pre-configured item once (see
+   `scripts/migrate-env-to-1password.js` below) so every future clone of the
+   same project skips straight past this. Either way, it then reads the
+   item's field *names* (never values) via `op item get`, and for every
+   `KEY=` line in the project's `.env.example` whose key matches a field
+   name on that item, swaps in a real `op://` reference; anything without a
+   matching field is left as the example's own default. If the 1Password CLI
+   isn't installed or authorized yet, it offers to install it and walks
+   through the one-time-per-machine authorization step (see below).
 3. **Skip / I don't know** — copies `.env.example` as-is, same as always;
    fill in the real values by hand later.
 

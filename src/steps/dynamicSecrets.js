@@ -237,7 +237,7 @@ async function tryLocalCopy(envPath, projectDir, envFileBasename) {
 
 async function resolveSecretsInteractively(examplePath, envPath, projectDir, envFileBasename) {
   if (isDryRun()) {
-    console.log('🧪 [dry-run] would ask how to fill in .env (1Password / local copy / skip).');
+    console.log('🧪 [dry-run] would ask how to fill in .env (local copy / 1Password / skip).');
     return false;
   }
 
@@ -245,9 +245,14 @@ async function resolveSecretsInteractively(examplePath, envPath, projectDir, env
     type: 'select',
     name: 'choice',
     message: 'How do you want to fill in this project\'s .env?',
+    // "local" is first/default (plain Enter picks it) — it's the fastest
+    // path when you already have a working checkout, and needs nothing set
+    // up in 1Password first. 1Password is second: reach for it deliberately
+    // once a project has an item worth auto-discovering.
+    initial: 0,
     choices: [
-      { title: 'Pull values from 1Password', value: '1password' },
       { title: 'Copy from a working local checkout', value: 'local' },
+      { title: 'Pull values from 1Password', value: '1password' },
       { title: "I don't know / skip for now (use example defaults)", value: 'skip' },
     ],
   });
