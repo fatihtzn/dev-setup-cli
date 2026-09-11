@@ -154,7 +154,17 @@ replaces steps 5-8 above with:
    by hand, done from the CLI instead.
 4. Runs `git lfs install` + `git lfs pull`, and the repo's own git-hooks
    setup script if it has one (e.g. `Scripts/setup-git-hooks.sh`).
-5. Prints the `open <name>.xcodeproj` command — pick a scheme in Xcode and
+5. Checks Xcode has completed its first-launch setup (`xcodebuild
+   -checkFirstLaunchStatus` — a fast check; normally automatic the first
+   time Xcode.app is opened via the GUI, but skipped when Xcode is installed
+   headlessly, e.g. via step 1's `mas install`) — offers to run `sudo
+   xcodebuild -runFirstLaunch` if not, since xcodebuild commands otherwise
+   fail with a cryptic plug-in-load error instead of a clear one.
+6. Checks an iOS Simulator runtime is installed (a bare Xcode install has
+   none at all) — offers to download one (`xcodebuild -downloadPlatform
+   iOS`, multi-GB) if missing, since there's nothing to run the app against
+   without one.
+7. Prints the `open <name>.xcodeproj` command — pick a scheme in Xcode and
    ⌘B to build; that part's still Xcode's own GUI, nothing to script there.
 
 ---

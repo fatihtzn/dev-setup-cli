@@ -45,7 +45,19 @@ async function ensureScopes(scopes, reason) {
   if (missing.length === 0) return;
 
   console.log(`\n🔐 Adding GitHub token permission(s) for ${reason}: ${missing.join(', ')}...\n`);
-  run(`gh auth refresh --hostname github.com --scopes ${missing.join(',')}`);
+  // Not wrapping this in its own try/catch would let a declined/failed
+  // device-flow approval crash the whole script via the top-level handler
+  // in bin/setup.js — with just a generic "An error occurred" and no
+  // indication of which permission was missing or what still works without
+  // it. Caught here instead so setup can continue (some things this
+  // permission enables — e.g. downloading a specific private package — may
+  // still fail later, but everything else already done stays done).
+  try {
+    run(`gh auth refresh --hostname github.com --scopes ${missing.join(',')}`);
+  } catch (err) {
+    console.log(`⚠️  Could not add GitHub permission(s) for ${reason}: ${err.message}`);
+    console.log(`   Re-run \`gh auth refresh --hostname github.com --scopes ${missing.join(',')}\` yourself once you're ready to approve it in the browser.`);
+  }
 }
 
 async function githubAuth() {

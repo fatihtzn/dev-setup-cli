@@ -86,6 +86,9 @@ function setupGitLfs(projectDir) {
     console.log('✅ Git LFS assets pulled.');
   } catch (err) {
     console.log(`⚠️  Git LFS setup failed: ${err.message}`);
+    console.log(
+      '   Large binary assets (images, fixtures, etc.) may be missing or still be tiny pointer files instead of their real content. Try running `git lfs install && git lfs pull` yourself in the project directory — if that also fails, check `git lfs env` for a config/network issue.'
+    );
   }
 }
 
@@ -103,11 +106,108 @@ function runGitHooksSetup(projectDir) {
     run('chmod +x Scripts/setup-git-hooks.sh && ./Scripts/setup-git-hooks.sh', { cwd: projectDir });
   } catch (err) {
     console.log(`⚠️  Git hooks setup script failed: ${err.message}`);
+    console.log(
+      '   Not fatal — this only means commit/push hooks (lint-staged, etc.) won\'t run locally yet. Try `./Scripts/setup-git-hooks.sh` yourself, or check the script\'s own output above for the actual cause.'
+    );
+  }
+}
+
+// Even after Xcode itself is installed (isXcodeFullyInstalled), a project's
+// own xcodebuild commands can still fail with a cryptic "required plug-in
+// failed to load ... IDESimulatorFoundation" error if Xcode has never
+// completed its first-launch setup — normally automatic the first time
+// Xcode.app is opened via the GUI, but skipped entirely when Xcode is
+// installed headlessly (confirmed directly, right after a fresh `mas
+// install` + license accept, with the error's own text pointing at
+// `-runFirstLaunch`). Checked with `-checkFirstLaunchStatus` (Apple's own
+// purpose-built flag for exactly this, exits non-zero when something's
+// outstanding) rather than by reproducing the failure with a real command
+// like `-list` — that also triggers this project's Swift Package
+// resolution, which can legitimately take minutes over the network
+// (observed directly: a `-list` call was still running after 3+ minutes),
+// far too slow for a routine startup check.
+function isXcodeFirstLaunchDone() {
+  try {
+    execFileSync('xcodebuild', ['-checkFirstLaunchStatus'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureXcodeFirstLaunchDone() {
+  if (isDryRun() || getPlatform() !== 'macos') return;
+  if (isXcodeFirstLaunchDone()) return;
+
+  console.log(
+    "\n🛠  Xcode hasn't completed its first-launch setup yet (normally automatic the first time Xcode.app opens via the GUI — skipped here since Xcode was installed from the command line). Until this runs once, xcodebuild commands fail with a cryptic plug-in-load error instead of a clear one."
+  );
+  const { runFirstLaunch } = await prompts({
+    type: 'confirm',
+    name: 'runFirstLaunch',
+    message: 'Run `sudo xcodebuild -runFirstLaunch` now? (asks for your admin password)',
+    initial: true,
+  });
+  if (!runFirstLaunch) {
+    console.log(
+      '   Skipped — run `sudo xcodebuild -runFirstLaunch` yourself before building, or just open Xcode.app once via the GUI (that completes the same setup).'
+    );
+    return;
+  }
+  try {
+    run('sudo xcodebuild -runFirstLaunch');
+    console.log('✅ Xcode first-launch setup complete.');
+  } catch (err) {
+    console.log(`⚠️  \`xcodebuild -runFirstLaunch\` failed: ${err.message}`);
+    console.log('   Open Xcode.app once by hand via the GUI instead — that completes the same setup.');
+  }
+}
+
+// A bare Xcode install (via the App Store, mas, or otherwise) doesn't come
+// with any Simulator runtime bundled — confirmed directly: `xcrun simctl
+// list runtimes` returned zero runtimes right after a fresh install. Without
+// one, ⌘R in Xcode has nothing to run against ("no destination" style
+// errors) until a runtime is downloaded via Xcode > Settings > Platforms,
+// or this (the same thing from the CLI).
+function hasIosSimulatorRuntime() {
+  try {
+    const raw = execFileSync('xcrun', ['simctl', 'list', 'runtimes', 'available', '-j'], { encoding: 'utf8' });
+    const parsed = JSON.parse(raw);
+    return (parsed.runtimes || []).some((r) => /ios/i.test(r.platform || r.identifier || ''));
+  } catch {
+    return false; // simctl itself failing also means "not ready" -- same fix applies (run first-launch/reinstall)
+  }
+}
+
+async function ensureIosSimulatorRuntime() {
+  if (isDryRun() || getPlatform() !== 'macos') return;
+  if (hasIosSimulatorRuntime()) return;
+
+  console.log(
+    '\n📲 No iOS Simulator runtime installed yet — needed to run the app without a physical device (this is separate from Xcode.app itself).'
+  );
+  const { download } = await prompts({
+    type: 'confirm',
+    name: 'download',
+    message: 'Download the iOS Simulator runtime now? (multi-GB, can take a while)',
+    initial: true,
+  });
+  if (!download) {
+    console.log('   Skipped — download one later via Xcode > Settings > Platforms, or run: xcodebuild -downloadPlatform iOS');
+    return;
+  }
+  try {
+    run('xcodebuild -downloadPlatform iOS');
+    console.log('✅ iOS Simulator runtime installed.');
+  } catch (err) {
+    console.log(`⚠️  Could not download the iOS Simulator runtime automatically: ${err.message}`);
+    console.log('   Download one via Xcode > Settings > Platforms instead — the ⓘ next to a platform shows download progress.');
   }
 }
 
 // Full setup for a detected Xcode project — everything short of the actual
-// build, which only Xcode's own GUI can do.
+// build, which only Xcode's own GUI (or a scripted xcodebuild/simctl call,
+// not yet automated here) can do.
 async function setupXcodeProject(projectDir) {
   // admin:public_key/repo already covered by gh's own default scopes plus
   // what githubAuth() already ensures; write:discussion and user are the
@@ -116,6 +216,8 @@ async function setupXcodeProject(projectDir) {
   await ensureGithubTokenInKeychain();
   setupGitLfs(projectDir);
   runGitHooksSetup(projectDir);
+  await ensureXcodeFirstLaunchDone();
+  await ensureIosSimulatorRuntime();
 
   const projectEntry = findXcodeProjectEntry(projectDir);
   console.log('\n📱 This is an Xcode project — there\'s no CLI dev server to start, open it to build and run:');
