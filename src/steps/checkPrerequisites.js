@@ -71,7 +71,14 @@ const XCODE_APP_STORE_ID = '497799835';
 // in a real interactive terminal (the whole point of "may ask for your
 // admin password" in the confirm prompt above), just not from a
 // non-interactive context with no TTY to answer it.
-async function installXcodeViaMas() {
+//
+// A 2.35GB download over `mas`'s own networking also genuinely times out
+// sometimes partway through, unrelated to being signed in or not (observed
+// directly: `mas install` got as far as "==> Downloading Xcode (26.6)" then
+// failed with NSURLErrorDomain Code=-1001 "The request timed out." — no
+// exposed `mas` flag raises that timeout, so retrying is the only real
+// mitigation). Retried a few times before giving up.
+async function installXcodeViaMas({ retries = 2 } = {}) {
   if (getPlatform() !== 'macos') return false;
 
   if (!commandExists('mas')) {
@@ -85,11 +92,22 @@ async function installXcodeViaMas() {
   }
 
   console.log('\n📦 Installing Xcode via the Mac App Store (mas install) — ~2.35GB, this will take a while...');
-  try {
-    run(`mas install ${XCODE_APP_STORE_ID}`);
-  } catch (err) {
-    console.log(`⚠️  \`mas install\` failed: ${err.message}`);
-    console.log('   This usually means the Mac isn\'t signed in to the App Store yet — sign in via the App Store app, then re-run.');
+  let lastErr;
+  for (let attempt = 1; attempt <= retries + 1; attempt++) {
+    try {
+      run(`mas install ${XCODE_APP_STORE_ID}`);
+      lastErr = null;
+      break;
+    } catch (err) {
+      lastErr = err;
+      if (attempt <= retries) {
+        console.log(`\n⚠️  Attempt ${attempt} failed (often just a network timeout on a download this large) — retrying...`);
+      }
+    }
+  }
+  if (lastErr) {
+    console.log(`\n⚠️  \`mas install\` failed after ${retries + 1} attempts: ${lastErr.message}`);
+    console.log('   Could be a network issue (this is a ~2.35GB download) or the Mac not being signed in to the App Store yet — check the error above, or install from the App Store app directly.');
     return false;
   }
 
